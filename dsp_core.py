@@ -76,6 +76,125 @@ def spectrum_db(x, fs=FS):
     return freqs, 20 * np.log10(np.abs(X) + 1e-9)
 
 
+def load_audio_file(file_path, target_fs=FS):
+    """Load a .wav or .mp3 file and return mono float array normalized to [-1,1].
+    Resamples to target_fs if needed. Returns (audio_array, original_fs)."""
+    import os
+    ext = os.path.splitext(file_path)[1].lower()
+    
+    if ext == '.mp3':
+        # Use scipy to read wav; for mp3 we need pydub or ffmpeg
+        try:
+            from pydub import AudioSegment
+            seg = AudioSegment.from_mp3(file_path)
+            seg = seg.set_channels(1)  # mono
+            samples = np.array(seg.get_array_of_samples(), dtype=np.float64)
+            samples = samples / (2**15)  # 16-bit normalization
+            orig_fs = seg.frame_rate
+        except ImportError:
+            raise ImportError("pydub is required for MP3 support. Install with: pip install pydub")
+    else:
+        # WAV file
+        orig_fs, data = wavfile.read(file_path)
+        if data.dtype == np.int16:
+            data = data.astype(np.float64) / 32768.0
+        elif data.dtype == np.int32:
+            data = data.astype(np.float64) / 2147483648.0
+        elif data.dtype == np.float32 or data.dtype == np.float64:
+            data = data.astype(np.float64)
+        else:
+            data = data.astype(np.float64) / np.max(np.abs(data) + 1e-12)
+        
+        # Convert to mono if stereo
+        if len(data.shape) > 1:
+            samples = np.mean(data, axis=1)
+        else:
+            samples = data
+    
+    # Resample to target sample rate if different
+    if orig_fs != target_fs:
+        num_samples = int(len(samples) * target_fs / orig_fs)
+        samples = signal.resample(samples, num_samples)
+    
+    return normalize(samples), orig_fs
+
+
+def spectral_subtraction_denoise(x, fs=FS, noise_frames=10, alpha=2.0, beta=0.02):
+    """Spectral subtraction noise reduction.
+    Estimates noise from first `noise_frames` STFT frames,
+    then subtracts scaled noise spectrum from each frame.
+    alpha: over-subtraction factor
+    beta: spectral floor (prevents musical noise)
+    """
+    nperseg = 512
+    noverlap = nperseg // 2
+    f, t, Zxx = signal.stft(x, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    mag = np.abs(Zxx)
+    phase = np.angle(Zxx)
+    
+    # Estimate noise power from initial frames
+    noise_power = np.mean(mag[:, :noise_frames] ** 2, axis=1, keepdims=True)
+    
+    # Spectral subtraction
+    clean_power = mag ** 2 - alpha * noise_power
+    clean_power = np.maximum(clean_power, beta * noise_power)  # spectral floor
+    clean_mag = np.sqrt(clean_power)
+    
+    # Reconstruct
+    clean_Zxx = clean_mag * np.exp(1j * phase)
+    _, clean_signal = signal.istft(clean_Zxx, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    
+    # Match original length
+    if len(clean_signal) > len(x):
+        clean_signal = clean_signal[:len(x)]
+    elif len(clean_signal) < len(x):
+        clean_signal = np.pad(clean_signal, (0, len(x) - len(clean_signal)))
+    
+    return clean_signal
+
+
+def wiener_denoise(x, fs=FS, noise_frames=10):
+    """Simple Wiener filter-based denoising.
+    Uses initial frames to estimate noise PSD."""
+    nperseg = 512
+    noverlap = nperseg // 2
+    f, t, Zxx = signal.stft(x, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    mag = np.abs(Zxx)
+    phase = np.angle(Zxx)
+    
+    # Noise power estimate from initial frames
+    noise_power = np.mean(mag[:, :noise_frames] ** 2, axis=1, keepdims=True)
+    signal_power = mag ** 2
+    
+    # Wiener gain
+    gain = np.maximum(1.0 - noise_power / (signal_power + 1e-10), 0.0)
+    
+    clean_mag = mag * gain
+    clean_Zxx = clean_mag * np.exp(1j * phase)
+    _, clean_signal = signal.istft(clean_Zxx, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    
+    if len(clean_signal) > len(x):
+        clean_signal = clean_signal[:len(x)]
+    elif len(clean_signal) < len(x):
+        clean_signal = np.pad(clean_signal, (0, len(x) - len(clean_signal)))
+    
+    return clean_signal
+
+
+def compute_snr(clean, noisy):
+    """Compute Signal-to-Noise Ratio in dB."""
+    noise = noisy - clean
+    signal_power = np.mean(clean ** 2)
+    noise_power = np.mean(noise ** 2) + 1e-12
+    return 10 * np.log10(signal_power / noise_power)
+
+
+def compute_spectrogram(x, fs=FS, nperseg=512, noverlap=384):
+    """Compute spectrogram for visualization."""
+    f, t, Zxx = signal.stft(x, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    return f, t, 20 * np.log10(np.abs(Zxx) + 1e-9)
+
+
 # --------------------------------------------------------------- 2. eq
 def band_split(x, fs=FS, low_cut=300, high_cut=3000, numtaps=101):
     lo = signal.firwin(numtaps, low_cut, fs=fs, pass_zero='lowpass')

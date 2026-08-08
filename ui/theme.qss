@@ -1,0 +1,168 @@
+/* Audio Signals Toolbox — light, airy Qt stylesheet */
+
+QWidget {
+    font-family: "Segoe UI", "Inter", sans-serif;
+    color: #33465c;
+}
+
+QMainWindow, #centralWidget {
+    background: transparent;
+}
+
+/* ---- cards ---- */
+.Card {
+    background: rgba(255, 255, 255, 0.80);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 16px;
+}
+
+QLabel#TitleLabel {
+    font-size: 22px;
+    font-weight: 700;
+    color: #2f3e50;
+}
+QLabel#SubtitleLabel {
+    font-size: 12px;
+    color: #6b7f96;
+}
+QLabel#SectionTitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2f3e50;
+}
+QLabel#Caption {
+    font-size: 11px;
+    color: #6b7f96;
+}
+QLabel#HintLabel {
+    font-size: 11px;
+    color: #8a9bb0;
+    background: #f0f6fc;
+    border-radius: 8px;
+    padding: 6px 10px;
+}
+QLabel#ErrorLabel {
+    color: #c0392b;
+    font-size: 12px;
+}
+QLabel#SuccessLabel {
+    color: #1e8a5f;
+    font-size: 12px;
+}
+
+/* ---- inputs ---- */
+QLineEdit {
+    background: white;
+    border: 1px solid #d6e2ef;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 13px;
+}
+QLineEdit:focus {
+    border: 1px solid #6fb1ea;
+}
+
+/* ---- buttons ---- */
+QPushButton#PrimaryButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #6fb1ea, stop:1 #8fd3c7);
+    color: white;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    padding: 9px 18px;
+}
+QPushButton#PrimaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #5fa3e0, stop:1 #7cc9bc);
+}
+QPushButton#SecondaryButton {
+    background: rgba(255,255,255,0.9);
+    color: #2f6690;
+    border: 1px solid #cfe1f2;
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-weight: 600;
+}
+QPushButton#SecondaryButton:hover {
+    background: #eaf4ff;
+}
+QPushButton#PlayButton {
+    background: #eaf6f4;
+    color: #2f6690;
+    border: 1px solid #cdeae4;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-weight: 600;
+}
+QPushButton#PlayButton:hover {
+    background: #d9f0eb;
+}
+
+/* ---- tabs ---- */
+QTabWidget::pane {
+    border: none;
+}
+QTabBar::tab {
+    background: transparent;
+    padding: 8px 18px;
+    color: #6b7f96;
+    font-weight: 600;
+}
+QTabBar::tab:selected {
+    color: #2f6690;
+    border-bottom: 2px solid #6fb1ea;
+}
+
+/* ---- sidebar nav list ---- */
+QListWidget#NavList {
+    background: rgba(255, 255, 255, 0.55);
+    border: none;
+    border-radius: 14px;
+    padding: 8px;
+    font-size: 13px;
+    outline: none;
+}
+QListWidget#NavList::item {
+    padding: 10px 12px;
+    border-radius: 10px;
+    margin-bottom: 3px;
+    color: #445872;
+}
+QListWidget#NavList::item:selected {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #6fb1ea, stop:1 #8fd3c7);
+    color: white;
+    font-weight: 600;
+}
+QListWidget#NavList::item:hover:!selected {
+    background: #eaf4ff;
+}
+
+/* ---- sliders ---- */
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #dbe8f4;
+    border-radius: 3px;
+}
+QSlider::handle:horizontal {
+    background: #6fb1ea;
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    border-radius: 8px;
+}
+QSlider::sub-page:horizontal {
+    background: #8fd3c7;
+    border-radius: 3px;
+}
+
+/* ---- pill badges ---- */
+QLabel.Pill {
+    background: #e7f3ff;
+    color: #2f6690;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 4px 10px;
+}

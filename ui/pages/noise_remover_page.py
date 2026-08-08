@@ -9,11 +9,79 @@ from PySide6.QtWidgets import (
     QProgressBar, QSplitter, QTabWidget, QSizePolicy, QSpacerItem,
     QScrollArea
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QThread
+from PySide6.QtCore import Qt, Signal, QTimer, QThread, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QColor, QPalette
 
 import dsp_core as dsp
 from ui.widgets import MplCanvas, AudioPlayButton
+
+
+# ─────────────────────────────────────────── Smooth Scroll Area
+class SmoothScrollArea(QScrollArea):
+    """QScrollArea with animated smooth scrolling on mouse wheel."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._target_value = 0
+        self._anim = QPropertyAnimation(self.verticalScrollBar(), b"value", self)
+        self._anim.setDuration(300)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        # Modern styled scrollbar
+        self.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 8px;
+                margin: 4px 2px 4px 0px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(111, 177, 234, 0.35);
+                min-height: 40px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(111, 177, 234, 0.6);
+            }
+            QScrollBar::handle:vertical:pressed {
+                background: rgba(111, 177, 234, 0.8);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical,
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: none;
+                border: none;
+                height: 0px;
+            }
+        """)
+
+    def wheelEvent(self, event):
+        bar = self.verticalScrollBar()
+
+        # If animation is running, use its target as the base
+        if self._anim.state() == QPropertyAnimation.Running:
+            current = self._target_value
+        else:
+            current = bar.value()
+
+        # Calculate step
+        delta = event.angleDelta().y()
+        step = int(bar.singleStep() * 2.5)
+        self._target_value = max(bar.minimum(),
+                                 min(bar.maximum(), current - (delta // 120) * step))
+
+        # Animate to target
+        self._anim.stop()
+        self._anim.setStartValue(bar.value())
+        self._anim.setEndValue(self._target_value)
+        self._anim.start()
+
+        event.accept()
 
 
 # ─────────────────────────────────────────── Mic Recorder Thread
@@ -148,9 +216,8 @@ class NoiseRemoverPage(QWidget):
     # ────────────────── UI Construction
     def _build_ui(self):
         # Main scrollable layout
-        scroll = QScrollArea()
+        scroll = SmoothScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         scroll_content = QWidget()
         main_layout = QVBoxLayout(scroll_content)
         main_layout.setSpacing(16)
@@ -843,8 +910,8 @@ class NoiseRemoverPage(QWidget):
         ax_sp = self.spec_canvas.fig.subplots(1, 1)
         freqs_o, db_o = dsp.spectrum_db(x, dsp.FS)
         freqs_d, db_d = dsp.spectrum_db(d, dsp.FS)
-        ax_sp.plot(freqs_o, db_o, linewidth=0.7, color="#e74c3c", alpha=0.6, label="Original")
-        ax_sp.plot(freqs_d, db_d, linewidth=0.7, color="#2ecc71", alpha=0.8, label="Denoised")
+        ax_sp.plot(freqs_o, db_o, linewidth=1.2, color="#e74c3c", alpha=0.9, label="Original", zorder=2)
+        ax_sp.plot(freqs_d, db_d, linewidth=0.8, color="#2ecc71", alpha=0.75, label="Denoised", zorder=3)
         ax_sp.set_xlim(0, min(dsp.FS // 2, 4000))
         ax_sp.set_ylabel("Magnitude (dB)", fontsize=9)
         ax_sp.set_xlabel("Frequency (Hz)", fontsize=9)

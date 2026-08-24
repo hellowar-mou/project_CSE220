@@ -195,6 +195,90 @@ def compute_spectrogram(x, fs=FS, nperseg=512, noverlap=384):
     return f, t, 20 * np.log10(np.abs(Zxx) + 1e-9)
 
 
+def load_sample_song(file_path, target_fs=FS, max_duration=30.0):
+    """Load an audio file (WAV/MP3/FLAC/OGG), resample to target_fs, trim to
+    max_duration seconds.  Returns (normalized_audio, original_sample_rate).
+    Uses soundfile as the primary reader (handles MP3/WAV/FLAC natively)."""
+    import soundfile as sf
+
+    data, orig_fs = sf.read(file_path, dtype='float64', always_2d=True)
+
+    # Convert to mono by averaging channels
+    samples = np.mean(data, axis=1)
+
+    # Resample to target sample rate if different
+    if orig_fs != target_fs:
+        num_samples = int(len(samples) * target_fs / orig_fs)
+        samples = signal.resample(samples, num_samples)
+
+    # Trim to max_duration
+    max_samples = int(max_duration * target_fs)
+    if len(samples) > max_samples:
+        samples = samples[:max_samples]
+
+    return normalize(samples), orig_fs
+
+
+def add_white_noise(x, amplitude=0.1):
+    return normalize(x + amplitude * _rng.standard_normal(len(x)))
+
+
+def add_pink_noise(x, amplitude=0.1):
+    white = _rng.standard_normal(len(x))
+    X = np.fft.rfft(white)
+    freqs = np.fft.rfftfreq(len(x))
+    freqs[0] = 1e-9
+    X = X / np.sqrt(freqs)
+    pink = np.fft.irfft(X, n=len(x))
+    pink = amplitude * pink / np.max(np.abs(pink) + 1e-12)
+    return normalize(x + pink)
+
+
+def add_hum_noise(x, amplitude=0.15, base_freq=50, fs=FS):
+    ts = t_axis(len(x) / fs, fs)
+    hum = (amplitude * np.sin(2 * np.pi * base_freq * ts) +
+           amplitude * 0.4 * np.sin(2 * np.pi * 2 * base_freq * ts) +
+           amplitude * 0.2 * np.sin(2 * np.pi * 3 * base_freq * ts))
+    return normalize(x + hum)
+
+
+def add_traffic_noise(x, amplitude=0.15, fs=FS):
+    white = _rng.standard_normal(len(x))
+    numtaps = 101
+    h = signal.firwin(numtaps, [20, 300], fs=fs, pass_zero='bandpass')
+    traffic = np.convolve(white, h, mode='same')
+    traffic = amplitude * traffic / np.max(np.abs(traffic) + 1e-12)
+    return normalize(x + traffic)
+
+
+def add_crowd_noise(x, amplitude=0.1, fs=FS):
+    white = _rng.standard_normal(len(x))
+    numtaps = 101
+    h = signal.firwin(numtaps, [300, 3000], fs=fs, pass_zero='bandpass')
+    crowd = np.convolve(white, h, mode='same')
+    
+    ts = t_axis(len(x) / fs, fs)
+    modulator = 0.5 * (1 + np.sin(2 * np.pi * 2 * ts)) + 0.5 * _rng.standard_normal(len(x))
+    crowd = crowd * np.abs(modulator)
+    crowd = amplitude * crowd / np.max(np.abs(crowd) + 1e-12)
+    return normalize(x + crowd)
+
+
+def add_combined_noise(x, noise_type='white', amplitude=0.1, fs=FS):
+    if noise_type == 'white':
+        return add_white_noise(x, amplitude)
+    elif noise_type == 'pink':
+        return add_pink_noise(x, amplitude)
+    elif noise_type == 'hum':
+        return add_hum_noise(x, amplitude, base_freq=50, fs=fs)
+    elif noise_type == 'traffic':
+        return add_traffic_noise(x, amplitude, fs=fs)
+    elif noise_type == 'crowd':
+        return add_crowd_noise(x, amplitude, fs=fs)
+    else:
+        return add_white_noise(x, amplitude)
+
+
 # --------------------------------------------------------------- 2. eq
 def band_split(x, fs=FS, low_cut=300, high_cut=3000, numtaps=101):
     lo = signal.firwin(numtaps, low_cut, fs=fs, pass_zero='lowpass')

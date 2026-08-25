@@ -39,9 +39,9 @@ class HomePage(QWidget):
         pills_row.addStretch()
         h_layout.addLayout(pills_row)
 
-        desc = QLabel("One shared DSP engine, six live applications. Pick a module from the "
+        desc = QLabel("One shared DSP engine, five live applications. Pick a module from the "
                        "sidebar — every demo runs the real NumPy/SciPy signal processing "
-                       "pipeline in real time.")
+                       "pipeline in real time, on your own uploaded audio wherever supported.")
         desc.setWordWrap(True)
         desc.setObjectName("Caption")
         h_layout.addWidget(desc)
@@ -53,10 +53,9 @@ class HomePage(QWidget):
         items = [
             ("🧹 Noise Remover", "Time-domain & frequency-domain LTI filtering"),
             ("🎚️ Equalizer", "3-band FIR filters + superposition"),
-            ("✂️ Mini Editor", "Trim/reverse/fade + convolution echo"),
-            ("📡 Morse Decoder", "Bandpass filter + Hilbert envelope detection"),
-            ("🎯 Template Matcher", "Cross-correlation / matched filtering"),
-            ("🎵 Mini Shazam", "Spectrogram peaks + correlation song ID"),
+            ("✂️ Editor", "Trim/reverse/fade + convolution echo"),
+            ("📡 Morse Code Converter", "Encode text to tones; decode tones back to text"),
+            ("🎯 Audio Matcher", "Cross-correlation / matched filtering"),
         ]
         for i, (t, d) in enumerate(items):
             grid.addWidget(_card(t, d), i // 3, i % 3)

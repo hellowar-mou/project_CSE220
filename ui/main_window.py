@@ -11,7 +11,6 @@ from ui.pages.equalizer_page import EqualizerPage
 from ui.pages.editor_page import EditorPage
 from ui.pages.morse_page import MorsePage
 from ui.pages.matcher_page import MatcherPage
-from ui.pages.shazam_page import ShazamPage
 
 
 class MainWindow(QMainWindow):
@@ -48,8 +47,8 @@ class MainWindow(QMainWindow):
 
         self.nav = QListWidget()
         self.nav.setObjectName("NavList")
-        for label in ["Home", "Noise Remover", "Equalizer", "Mini Editor",
-                      "Morse Decoder", "Template Matcher", "Mini Shazam"]:
+        for label in ["Home", "Noise Remover", "Equalizer", "Editor",
+                      "Morse Code Converter", "Audio Matcher"]:
             QListWidgetItem(label, self.nav)
         self.nav.setCurrentRow(0)
         self.nav.currentRowChanged.connect(self._on_nav)
@@ -69,10 +68,9 @@ class MainWindow(QMainWindow):
             "Home": HomePage,
             "Noise Remover": NoiseRemoverPage,
             "Equalizer": EqualizerPage,
-            "Mini Editor": EditorPage,
-            "Morse Decoder": MorsePage,
-            "Template Matcher": MatcherPage,
-            "Mini Shazam": ShazamPage,
+            "Editor": EditorPage,
+            "Morse Code Converter": MorsePage,
+            "Audio Matcher": MatcherPage,
         }
         # Home is built eagerly; the rest build lazily on first visit (faster startup)
         home = HomePage()

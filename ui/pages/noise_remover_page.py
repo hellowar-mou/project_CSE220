@@ -583,6 +583,15 @@ class NoiseRemoverPage(QWidget):
         players.addWidget(self.p_denoised)
         players.addStretch()
 
+        # Live playback position marker on the waveform tab, synced to
+        # whichever player is actually playing.
+        self.p_original.position_changed.connect(self.wave_canvas.update_playhead)
+        self.p_denoised.position_changed.connect(self.wave_canvas.update_playhead)
+        self.p_original.playback_active_changed.connect(
+            lambda active: None if active else self.wave_canvas.clear_playhead())
+        self.p_denoised.playback_active_changed.connect(
+            lambda active: None if active else self.wave_canvas.clear_playhead())
+
         # Export button
         self.export_btn = QPushButton("💾  Export Denoised WAV")
         self.export_btn.setObjectName("SecondaryButton")

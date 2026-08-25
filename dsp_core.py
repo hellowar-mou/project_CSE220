@@ -1,7 +1,7 @@
 """
 Shared DSP core for the Audio Signals Toolbox.
-Every app in this project (Noise Remover, Equalizer, Editor, Morse Decoder,
-Template Matcher, Mini Shazam) is built from three primitives:
+Every app in this project (Noise Remover, Equalizer, Editor, Morse Code
+Converter, Audio Matcher) is built from three primitives:
   - Convolution (LTI systems)
   - The Fourier Transform (via FFT / STFT)
   - Correlation (matched filtering)
@@ -211,6 +211,20 @@ def equalize(x, gains=(1.0, 1.0, 1.0), **kwargs):
     return normalize(gL * lo + gM * mid + gH * hi)
 
 
+def equalizer_frequency_response(gains=(1.0, 1.0, 1.0), fs=FS, low_cut=300,
+                                  high_cut=3000, numtaps=101, n_points=512):
+    """Combined magnitude frequency response of the 3-band EQ at the given
+    gains — used to draw a live 'what the EQ is doing to the spectrum right
+    now' curve as the user moves the gain sliders."""
+    lo = signal.firwin(numtaps, low_cut, fs=fs, pass_zero='lowpass')
+    mid = signal.firwin(numtaps, [low_cut, high_cut], fs=fs, pass_zero='bandpass')
+    hi = signal.firwin(numtaps, high_cut, fs=fs, pass_zero='highpass')
+    gL, gM, gH = gains
+    combined = gL * lo + gM * mid + gH * hi
+    w, h = signal.freqz(combined, worN=n_points, fs=fs)
+    return w, 20 * np.log10(np.abs(h) + 1e-9)
+
+
 # --------------------------------------------------------------- 3. editor
 def trim(x, start_s, end_s, fs=FS):
     return x[int(start_s * fs):int(end_s * fs)]
@@ -277,12 +291,84 @@ def synth_morse(text, fs=FS, tone_freq=700, unit=0.08):
     return audio, unit
 
 
-def decode_morse(x, fs=FS, tone_freq=700, unit=0.08):
-    bp = signal.firwin(201, [max(tone_freq - 80, 1), tone_freq + 80], fs=fs, pass_zero='bandpass')
+def detect_tone_freq(x, fs=FS, search_range=(200, 2000)):
+    """Auto-detect the dominant Morse tone frequency in a recording by
+    finding the strongest spectral peak within a plausible tone range.
+    This lets the decoder work on uploaded/toolbox clips whose tone
+    frequency and speed aren't known in advance."""
+    X = np.fft.rfft(x)
+    freqs = np.fft.rfftfreq(len(x), d=1 / fs)
+    mag = np.abs(X)
+    band = (freqs >= search_range[0]) & (freqs <= search_range[1])
+    if not np.any(band):
+        return 700.0
+    band_freqs = freqs[band]
+    band_mag = mag[band]
+    return float(band_freqs[np.argmax(band_mag)])
+
+
+def detect_unit_duration(keyed, fs=FS):
+    """Estimate the Morse 'unit' (dot) duration from the shortest sustained
+    on-pulse in a keyed (on/off) signal, so decoding doesn't depend on a
+    hardcoded speed."""
+    changes = np.diff(keyed.astype(int))
+    starts = np.where(changes == 1)[0] + 1
+    ends = np.where(changes == -1)[0] + 1
+    if keyed[0]:
+        starts = np.r_[0, starts]
+    if keyed[-1]:
+        ends = np.r_[ends, len(keyed)]
+    if len(starts) == 0:
+        return 0.08
+    durations = (ends - starts) / fs
+    durations = durations[durations > 0.01]
+    if len(durations) == 0:
+        return 0.08
+    # The shortest common pulse length is a good estimate of one "dot" unit.
+    return float(np.percentile(durations, 20))
+
+
+def build_morse_toolbox(fs=FS):
+    """A small library of predetermined Morse audio clips (different
+    messages, tone pitches and speeds) the user can pick from on the Morse
+    Code page instead of typing their own message or uploading a file."""
+    presets = [
+        ("SOS",     "SOS",     600, 0.08),
+        ("HELLO",   "HELLO",   700, 0.07),
+        ("HELP ME", "HELP ME", 550, 0.09),
+        ("PARIS",   "PARIS",   650, 0.06),
+        ("TEST",    "TEST",    800, 0.10),
+    ]
+    toolbox = {}
+    for label, message, tone_freq, unit in presets:
+        audio, used_unit = synth_morse(message, fs=fs, tone_freq=tone_freq, unit=unit)
+        toolbox[label] = {
+            "audio": audio,
+            "message": message,
+            "tone_freq": tone_freq,
+            "unit": used_unit,
+        }
+    return toolbox
+
+
+def decode_morse(x, fs=FS, tone_freq=None, unit=None):
+    """Decode a Morse tone recording into text.
+    tone_freq=None auto-detects the tone frequency; unit=None auto-estimates
+    the dot duration — both needed to decode arbitrary uploaded/toolbox
+    clips whose speed and pitch aren't known ahead of time.
+    """
+    if tone_freq is None:
+        tone_freq = detect_tone_freq(x, fs=fs)
+
+    bp = signal.firwin(201, [max(tone_freq - 80, 1), min(tone_freq + 80, fs / 2 - 1)],
+                        fs=fs, pass_zero='bandpass')
     filtered = np.convolve(x, bp, mode='same')
     envelope = np.abs(signal.hilbert(filtered))
     envelope = envelope / (np.max(envelope) + 1e-9)
     keyed = envelope > 0.25
+
+    if unit is None:
+        unit = detect_unit_duration(keyed, fs=fs)
 
     changes = np.diff(keyed.astype(int))
     starts = np.where(changes == 1)[0] + 1
@@ -318,7 +404,7 @@ def decode_morse(x, fs=FS, tone_freq=700, unit=0.08):
             letter += s
     if letter:
         text.append(MORSE.get(letter, '?'))
-    return ''.join(text), filtered, envelope, keyed
+    return ''.join(text), filtered, envelope, keyed, tone_freq, unit
 
 
 # --------------------------------------------------------------- 5. matcher
@@ -357,48 +443,24 @@ def match_template(recording, template):
     return corr
 
 
-# --------------------------------------------------------------- 6. shazam
-def make_melody(freqs, note_dur=0.25, fs=FS):
-    chunks = [np.sin(2 * np.pi * f * t_axis(note_dur, fs)) * np.hanning(int(note_dur * fs)) for f in freqs]
-    return normalize(np.concatenate(chunks))
-
-
-def build_song_library(fs=FS):
-    return {
-        "Song A": make_melody([392, 440, 494, 440, 392, 330, 294], fs=fs),
-        "Song B": make_melody([523, 494, 440, 392, 440, 494, 523], fs=fs),
-        "Song C": make_melody([262, 330, 392, 523, 392, 330, 262], fs=fs),
-    }
-
-
-def spectrogram_peaks(x, fs=FS, nperseg=512, noverlap=384, n_peaks_per_frame=3):
-    f, tt, Zxx = signal.stft(x, fs=fs, nperseg=nperseg, noverlap=noverlap)
-    mag = np.abs(Zxx)
-    peaks = []
-    for frame_idx in range(mag.shape[1]):
-        frame = mag[:, frame_idx]
-        if frame.max() < 1e-6:
-            continue
-        top_bins = np.argsort(frame)[-n_peaks_per_frame:]
-        for b in top_bins:
-            peaks.append((tt[frame_idx], f[b]))
-    return peaks, f, tt, mag
-
-
-def match_song(snippet, library_fps, fs=FS):
-    snip_peaks, *_ = spectrogram_peaks(snippet, fs=fs)
-    snip_fp = np.array(snip_peaks) if snip_peaks else np.zeros((0, 2))
-    scores = {}
-    for name, song_peaks in library_fps.items():
-        song_fp = np.array(song_peaks)
-        offsets = []
-        for st, sf in snip_fp:
-            close = np.abs(song_fp[:, 1] - sf) < 5
-            for lt in song_fp[close, 0]:
-                offsets.append(lt - st)
-        if offsets:
-            hist, edges = np.histogram(offsets, bins=40)
-            scores[name] = int(hist.max())
-        else:
-            scores[name] = 0
-    return scores
+def clip_similarity(clip_a, clip_b):
+    """Compare two arbitrary-length audio clips via cross-correlation
+    (the same matched-filter primitive as match_template) and report a
+    normalized similarity score and the best alignment offset in seconds.
+    This is a thin convenience wrapper — it does not change the underlying
+    correlation logic, only packages it for 'compare two clips' use."""
+    if len(clip_a) == 0 or len(clip_b) == 0:
+        return 0.0, 0.0
+    # Correlate the shorter against the longer so 'mode=valid' has a sensible
+    # sweep range regardless of which clip the user uploaded first.
+    if len(clip_a) >= len(clip_b):
+        longer, shorter = clip_a, clip_b
+    else:
+        longer, shorter = clip_b, clip_a
+    corr = signal.correlate(longer, shorter, mode='valid')
+    norm = (np.linalg.norm(longer) * np.linalg.norm(shorter)) + 1e-9
+    normalized = corr / norm
+    best_idx = int(np.argmax(np.abs(normalized)))
+    score = float(np.abs(normalized[best_idx]))  # 0..1-ish similarity
+    offset_s = best_idx / FS
+    return score, offset_s

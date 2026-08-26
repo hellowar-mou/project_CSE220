@@ -33,7 +33,7 @@ from logic.equalizer import (
 
 # ---- editor
 from logic.editor import (
-    trim, reverse, fade, echo,
+    trim, join, reverse, time_scale, fade, smooth, echo,
 )
 
 # ---- morse

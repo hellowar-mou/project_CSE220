@@ -32,6 +32,27 @@ def to_wav_bytes(x, fs=FS):
     return buf.read()
 
 
+def write_wav_file(path, x, fs=FS):
+    """Write a float array in [-1, 1] to a 16-bit PCM .wav file on disk —
+    used by 'Download' actions (e.g. Audio Matcher's Download Matched Audio)."""
+    with open(path, "wb") as f:
+        f.write(to_wav_bytes(x, fs))
+
+
+def compute_rms(x):
+    """RMS level of a signal (linear 0-1 scale)."""
+    if len(x) == 0:
+        return 0.0
+    return float(np.sqrt(np.mean(np.asarray(x, dtype=float) ** 2)))
+
+
+def compute_peak(x):
+    """Peak absolute amplitude of a signal (linear 0-1 scale)."""
+    if len(x) == 0:
+        return 0.0
+    return float(np.max(np.abs(x)))
+
+
 def load_audio_file(file_path, target_fs=FS):
     """Load a .wav or .mp3 file and return mono float array normalized to [-1,1].
     Resamples to target_fs if needed. Returns (audio_array, original_fs)."""

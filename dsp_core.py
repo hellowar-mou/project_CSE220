@@ -12,9 +12,10 @@ existing `import dsp_core as dsp` statements continue to work unchanged.
 
 # ---- utilities
 from logic.utils import (
-    FS, _rng, t_axis, normalize, to_wav_bytes,
+    FS, _rng, t_axis, normalize, to_wav_bytes, write_wav_file,
     load_audio_file, load_sample_song,
     spectrum_db, compute_spectrogram, compute_snr,
+    compute_rms, compute_peak,
 )
 
 # ---- noise remover
@@ -47,5 +48,6 @@ from logic.morse import (
 from logic.matcher import (
     make_clap, make_bell, make_tap,
     build_template_recording, match_template, clip_similarity,
-    make_melody, build_song_library, spectrogram_peaks, match_song,
+    spectrogram_peaks, match_song,
+    load_audio_library, run_matching, ALGORITHMS,
 )

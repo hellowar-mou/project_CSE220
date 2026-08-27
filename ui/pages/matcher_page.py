@@ -1,183 +1,624 @@
 import os
+import shutil
 import numpy as np
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton,
-    QFileDialog, QTabWidget
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QFrame, QPushButton,
+    QFileDialog, QTabWidget, QComboBox, QProgressBar, QMessageBox
 )
+from PySide6.QtCore import Qt, Signal, QThread
+
 import dsp_core as dsp
-from ui.widgets import MplCanvas, AudioPlayButton
+from ui.widgets import MplCanvas, AudioTransportWidget, MicRecorderThread
 
 
+# ============================================================== worker thread
+class MatchWorkerThread(QThread):
+    """Runs dsp.run_matching() off the UI thread so searching the library
+    never freezes the app, and reports genuine per-track progress back to
+    the UI as each library item actually finishes being scored."""
+    progress = Signal(str, float)      # library item name, fraction complete
+    finished_matching = Signal(dict)   # result dict from dsp.run_matching
+    failed = Signal(str)
+
+    def __init__(self, query, library, algorithm, parent=None):
+        super().__init__(parent)
+        self.query = query
+        self.library = library
+        self.algorithm = algorithm
+
+    def run(self):
+        try:
+            result = dsp.run_matching(
+                self.query, self.library, self.algorithm,
+                progress_callback=lambda name, frac: self.progress.emit(name, frac)
+            )
+            self.finished_matching.emit(result)
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
+def _confidence_label(score):
+    if score >= 0.6:
+        return "High confidence", "#1e8a5f"
+    elif score >= 0.35:
+        return "Medium confidence", "#b8860b"
+    else:
+        return "Low confidence", "#c0392b"
+
+
+PIPELINE_STAGES = [
+    "Input", "Preprocessing", "Feature Extraction",
+    "Algorithm Matching", "Scoring", "Ranking", "Final Match",
+]
+
+
+# ============================================================== main page
 class MatcherPage(QWidget):
-    """UI/visualization layer only. Both tabs call dsp_core's unchanged
-    correlation primitives (match_template / clip_similarity, both built on
-    scipy.signal.correlate) — no matching logic was modified here."""
+    """Audio Matcher — upload or record a query, search the real built-in
+    audio library (audios/*.mp3) using one or all of the existing
+    correlation-based algorithms (logic/matcher.py), and inspect ranked
+    results with a live, genuine processing-pipeline visualization.
+
+    Matching primitives (match_template, clip_similarity, spectrogram_peaks/
+    match_song) are unchanged from before; only the orchestration layer
+    (logic.matcher.run_matching) and this UI are new."""
 
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        self.library = dsp.load_audio_library()
+        self.query_audio = None
+        self.query_source_label = "No input yet"
+        self._mic_thread = None
+        self._mic_chunks = []
+        self._worker = None
+        self._last_result = None
 
+        self._build_ui()
+        self._set_status("Ready", "#2f6690")
+        self._refresh_library_panel()
+
+    # ------------------------------------------------------------ UI build
+    def _build_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setSpacing(12)
+
+        # ---- header
         header = QFrame()
         header.setStyleSheet("QFrame { background: rgba(255,255,255,0.78); border-radius: 14px; }")
-        h_layout = QVBoxLayout(header)
+        h_layout = QHBoxLayout(header)
+        title_col = QVBoxLayout()
         title = QLabel("🎯 Audio Matcher")
         title.setObjectName("SectionTitle")
-        caption = QLabel("Cross-correlation (matched filtering) locates a reference sound "
-                          "inside a longer recording, or scores how similar two clips are.")
+        caption = QLabel("Upload audio or record from mic, then search the built-in "
+                          "song library using cross-correlation, similarity, and "
+                          "spectral-fingerprint matching.")
         caption.setObjectName("Caption")
         caption.setWordWrap(True)
-        h_layout.addWidget(title)
-        h_layout.addWidget(caption)
-        layout.addWidget(header)
+        title_col.addWidget(title)
+        title_col.addWidget(caption)
+        h_layout.addLayout(title_col, 1)
+        self.status_label = QLabel("Ready")
+        self.status_label.setObjectName("Caption")
+        self.status_label.setStyleSheet("font-weight: 700;")
+        h_layout.addWidget(self.status_label)
+        outer.addWidget(header)
 
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_demo_tab(), "Built-in Demo")
-        self.tabs.addTab(self._build_upload_tab(), "Upload Your Own Clips")
-        layout.addWidget(self.tabs)
+        # ---- Section 1: Audio Input
+        outer.addWidget(self._section_label("① Audio Input"))
+        self.input_tabs = QTabWidget()
+        self.input_tabs.addTab(self._build_upload_tab(), "📁 Upload Audio")
+        self.input_tabs.addTab(self._build_mic_tab(), "🎙️ Record Microphone")
+        outer.addWidget(self.input_tabs)
 
-    # ------------------------------------------------------- Demo tab (original)
-    def _build_demo_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setSpacing(10)
+        self.query_info_label = QLabel("No input yet.")
+        self.query_info_label.setObjectName("Caption")
+        self.query_info_label.setWordWrap(True)
+        outer.addWidget(self.query_info_label)
 
-        self.player = AudioPlayButton("Full recording")
-        row = QHBoxLayout(); row.addWidget(self.player); row.addStretch()
-        layout.addLayout(row)
+        self.query_canvas = MplCanvas(n_rows=1, figsize=(7, 2.0))
+        outer.addWidget(self.query_canvas)
 
-        self.canvas = MplCanvas(n_rows=4)
-        layout.addWidget(self.canvas)
+        self.query_transport = AudioTransportWidget()
+        outer.addWidget(self.query_transport)
+        self.query_transport.position_changed.connect(self.query_canvas.update_playhead)
+        self.query_transport.playback_active_changed.connect(
+            lambda active: None if active else self.query_canvas.clear_playhead())
 
-        self.results_label = QLabel("")
-        self.results_label.setWordWrap(True)
-        self.results_label.setObjectName("Caption")
-        layout.addWidget(self.results_label)
-        layout.addStretch()
+        # ---- Section 2: Built-in Audio Library
+        outer.addWidget(self._section_label("② Built-in Audio Library (Demo Mode)"))
+        lib_desc = QLabel("This is what your query is searched against. Click 'Use as Demo Query' "
+                           "on any track to try the whole pipeline with one click — no upload needed.")
+        lib_desc.setObjectName("Caption")
+        lib_desc.setWordWrap(True)
+        outer.addWidget(lib_desc)
+        self.library_grid = QGridLayout()
+        outer.addLayout(self.library_grid)
 
-        self._build_demo()
+        # ---- Section 3: Matching Configuration
+        outer.addWidget(self._section_label("③ Matching Configuration"))
+        config_row = QHBoxLayout()
+        config_row.addWidget(QLabel("Algorithm:"))
+        self.algo_combo = QComboBox()
+        self.algo_combo.addItems(dsp.ALGORITHMS)
+        self.algo_combo.setCurrentText("Combined (All Algorithms)")
+        config_row.addWidget(self.algo_combo, 1)
+        self.search_btn = QPushButton("🔍 Search Library")
+        self.search_btn.setObjectName("PrimaryButton")
+        self.search_btn.setEnabled(False)
+        self.search_btn.clicked.connect(self._start_matching)
+        config_row.addWidget(self.search_btn)
+        outer.addLayout(config_row)
 
-        self.player.position_changed.connect(self.canvas.update_playhead)
-        self.player.playback_active_changed.connect(
-            lambda active: None if active else self.canvas.clear_playhead())
-        return tab
+        # ---- Section 4: Live Processing Pipeline
+        outer.addWidget(self._section_label("④ Live Processing Pipeline"))
+        self.stage_row = QHBoxLayout()
+        self.stage_labels = []
+        for stage in PIPELINE_STAGES:
+            lab = QLabel(stage)
+            lab.setObjectName("Caption")
+            lab.setStyleSheet("padding: 4px 8px; border-radius: 8px; background: #eef5fb;")
+            self.stage_row.addWidget(lab)
+            self.stage_labels.append(lab)
+        outer.addLayout(self.stage_row)
 
-    def _build_demo(self):
-        recording, templates, placements = dsp.build_template_recording()
-        self.player.set_audio(recording)
+        self.pipeline_canvas = MplCanvas(n_rows=3, figsize=(7, 1.5))
+        outer.addWidget(self.pipeline_canvas)
 
-        figs_data = [(recording, "Recording")]
-        lines = []
-        for name, tmpl in templates.items():
-            corr = dsp.match_template(recording, tmpl)  # unchanged correlation logic
-            peak_t = np.argmax(np.abs(corr)) / dsp.FS
-            figs_data.append((corr, f"corr: {name}"))
-            lines.append(f"• {name}: detected at {peak_t:.2f}s (true: {placements[name]:.2f}s)")
+        self.progress_grid = QGridLayout()
+        outer.addLayout(self.progress_grid)
+        self.progress_bars = {}
 
-        self.canvas.plot_waveforms(figs_data, "Recording & correlation scores")
-        self.results_label.setText("Detected vs. true placement:<br>" + "<br>".join(lines))
+        # ---- Section 5: Results
+        outer.addWidget(self._section_label("⑤ Results"))
+        self.best_match_frame = QFrame()
+        self.best_match_frame.setStyleSheet(
+            "QFrame { background: rgba(143, 211, 199, 0.35); border-radius: 14px; "
+            "border: 2px solid #8fd3c7; }")
+        self.best_match_layout = QVBoxLayout(self.best_match_frame)
+        self.best_match_label = QLabel("No results yet — run a search above.")
+        self.best_match_label.setObjectName("SectionTitle")
+        self.best_match_layout.addWidget(self.best_match_label)
+        outer.addWidget(self.best_match_frame)
 
-    # ------------------------------------------------------- Upload tab (new UI only)
+        self.ranked_list_layout = QVBoxLayout()
+        outer.addLayout(self.ranked_list_layout)
+
+        # ---- Section 6: Comparison
+        outer.addWidget(self._section_label("⑥ Input vs. Matched Comparison"))
+        self.compare_canvas = MplCanvas(n_rows=2, figsize=(7, 2.0))
+        outer.addWidget(self.compare_canvas)
+
+        compare_players = QHBoxLayout()
+        self.compare_input_transport = AudioTransportWidget()
+        self.compare_match_transport = AudioTransportWidget()
+        col1 = QVBoxLayout(); col1.addWidget(QLabel("Your Input")); col1.addWidget(self.compare_input_transport)
+        col2 = QVBoxLayout(); col2.addWidget(QLabel("Matched Audio")); col2.addWidget(self.compare_match_transport)
+        compare_players.addLayout(col1)
+        compare_players.addLayout(col2)
+        outer.addLayout(compare_players)
+
+        # ---- Section 7: Download
+        download_row = QHBoxLayout()
+        self.download_btn = QPushButton("⬇ Download Matched Audio (Original)")
+        self.download_btn.setObjectName("SecondaryButton")
+        self.download_btn.setEnabled(False)
+        self.download_btn.clicked.connect(self._on_download_original)
+        download_row.addWidget(self.download_btn)
+
+        self.download_processed_btn = QPushButton("⬇ Download Processed Version (WAV)")
+        self.download_processed_btn.setObjectName("SecondaryButton")
+        self.download_processed_btn.setEnabled(False)
+        self.download_processed_btn.clicked.connect(self._on_download_processed)
+        download_row.addWidget(self.download_processed_btn)
+        download_row.addStretch()
+        outer.addLayout(download_row)
+
+        outer.addStretch()
+
+    def _section_label(self, text):
+        lab = QLabel(text)
+        lab.setObjectName("SectionTitle")
+        return lab
+
+    # ------------------------------------------------------------ Upload tab
     def _build_upload_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
-        self.ref_audio = None
-        self.target_audio = None
+        row = QHBoxLayout()
+        self.upload_btn = QPushButton("📁 Upload Audio File")
+        self.upload_btn.setObjectName("PrimaryButton")
+        self.upload_btn.setToolTip("Supported formats: WAV, MP3, FLAC, OGG")
+        self.upload_btn.clicked.connect(self._on_upload)
+        row.addWidget(self.upload_btn)
 
-        upload_row = QHBoxLayout()
-        self.ref_btn = QPushButton("📁 Upload Reference Clip")
-        self.ref_btn.setObjectName("PrimaryButton")
-        self.ref_btn.clicked.connect(lambda: self._on_upload("ref"))
-        upload_row.addWidget(self.ref_btn)
+        self.remove_btn = QPushButton("✖ Remove")
+        self.remove_btn.setObjectName("DangerButton")
+        self.remove_btn.setEnabled(False)
+        self.remove_btn.clicked.connect(self._on_remove_input)
+        row.addWidget(self.remove_btn)
+        row.addStretch()
+        layout.addLayout(row)
 
-        self.target_btn = QPushButton("📁 Upload Target Recording")
-        self.target_btn.setObjectName("PrimaryButton")
-        self.target_btn.clicked.connect(lambda: self._on_upload("target"))
-        upload_row.addWidget(self.target_btn)
-        upload_row.addStretch()
-        layout.addLayout(upload_row)
-
-        self.upload_status = QLabel("Upload a short reference clip and a longer target "
-                                     "recording to compare.")
-        self.upload_status.setObjectName("Caption")
-        self.upload_status.setWordWrap(True)
-        layout.addWidget(self.upload_status)
-
-        run_row = QHBoxLayout()
-        self.run_btn = QPushButton("▶ Run Match")
-        self.run_btn.setObjectName("SecondaryButton")
-        self.run_btn.setEnabled(False)
-        self.run_btn.clicked.connect(self._run_upload_match)
-        run_row.addWidget(self.run_btn)
-        run_row.addStretch()
-        layout.addLayout(run_row)
-
-        players = QHBoxLayout()
-        self.p_ref = AudioPlayButton("Reference clip")
-        self.p_target = AudioPlayButton("Target recording")
-        players.addWidget(self.p_ref)
-        players.addWidget(self.p_target)
-        players.addStretch()
-        layout.addLayout(players)
-
-        self.upload_canvas = MplCanvas(n_rows=2)
-        layout.addWidget(self.upload_canvas)
-
-        self.upload_result_label = QLabel("")
-        self.upload_result_label.setObjectName("SectionTitle")
-        self.upload_result_label.setWordWrap(True)
-        layout.addWidget(self.upload_result_label)
+        self.upload_file_label = QLabel("No file selected.")
+        self.upload_file_label.setObjectName("Caption")
+        self.upload_file_label.setWordWrap(True)
+        layout.addWidget(self.upload_file_label)
         layout.addStretch()
-
-        self.p_target.position_changed.connect(self.upload_canvas.update_playhead)
-        self.p_target.playback_active_changed.connect(
-            lambda active: None if active else self.upload_canvas.clear_playhead())
         return tab
 
-    def _on_upload(self, which):
+    def _on_upload(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select Audio File", "",
-            "Audio Files (*.wav *.mp3);;WAV Files (*.wav);;MP3 Files (*.mp3)")
+            "Audio Files (*.wav *.mp3 *.flac *.ogg);;All Files (*)")
         if not path:
             return
         try:
+            self._set_status("Analyzing", "#b8860b")
             audio, orig_fs = dsp.load_audio_file(path, target_fs=dsp.FS)
-            fname = os.path.basename(path)
-            if which == "ref":
-                self.ref_audio = audio
-                self.p_ref.set_audio(audio)
-            else:
-                self.target_audio = audio
-                self.p_target.set_audio(audio)
-            self._update_upload_status(fname)
-            self.run_btn.setEnabled(self.ref_audio is not None and self.target_audio is not None)
+            ext = os.path.splitext(path)[1].lstrip(".").upper()
+            duration_s = len(audio) / dsp.FS
+            self.upload_file_label.setText(
+                f"✅ {os.path.basename(path)}  |  Format: {ext}  |  "
+                f"Original SR: {orig_fs} Hz  |  Duration: {duration_s:.2f}s")
+            self.remove_btn.setEnabled(True)
+            self._set_query(audio, os.path.basename(path))
+            self._set_status("Ready", "#2f6690")
         except Exception as e:
-            self.upload_status.setText(f"❌ Error loading {which} file: {e}")
+            self.upload_file_label.setText(f"❌ Could not load file: {e}")
+            self._set_status("Error", "#c0392b")
 
-    def _update_upload_status(self, last_loaded_name):
-        parts = []
-        parts.append("Reference: ✅ loaded" if self.ref_audio is not None else "Reference: not loaded")
-        parts.append("Target: ✅ loaded" if self.target_audio is not None else "Target: not loaded")
-        self.upload_status.setText(f"Last loaded: {last_loaded_name}  —  " + "  |  ".join(parts))
+    def _on_remove_input(self):
+        self.query_audio = None
+        self.query_source_label = "No input yet"
+        self.upload_file_label.setText("No file selected.")
+        self.remove_btn.setEnabled(False)
+        self.query_transport.clear()
+        self.query_canvas.fig.clear()
+        self.query_canvas.draw()
+        self.query_info_label.setText("No input yet.")
+        self.search_btn.setEnabled(False)
 
-    def _run_upload_match(self):
-        if self.ref_audio is None or self.target_audio is None:
+    # ------------------------------------------------------------ Mic tab
+    def _build_mic_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(8)
+
+        row = QHBoxLayout()
+        self.mic_start_btn = QPushButton("🎙️ Start Recording")
+        self.mic_start_btn.setObjectName("PrimaryButton")
+        self.mic_start_btn.clicked.connect(self._on_mic_start)
+        row.addWidget(self.mic_start_btn)
+
+        self.mic_pause_btn = QPushButton("⏸ Pause")
+        self.mic_pause_btn.setObjectName("SecondaryButton")
+        self.mic_pause_btn.setEnabled(False)
+        self.mic_pause_btn.clicked.connect(self._on_mic_pause)
+        row.addWidget(self.mic_pause_btn)
+
+        self.mic_stop_btn = QPushButton("⏹ Stop")
+        self.mic_stop_btn.setObjectName("SecondaryButton")
+        self.mic_stop_btn.setEnabled(False)
+        self.mic_stop_btn.clicked.connect(self._on_mic_stop)
+        row.addWidget(self.mic_stop_btn)
+
+        self.mic_clear_btn = QPushButton("🗑 Clear")
+        self.mic_clear_btn.setObjectName("SecondaryButton")
+        self.mic_clear_btn.setEnabled(False)
+        self.mic_clear_btn.clicked.connect(self._on_mic_clear)
+        row.addWidget(self.mic_clear_btn)
+        row.addStretch()
+        layout.addLayout(row)
+
+        self.mic_level_bar = QProgressBar()
+        self.mic_level_bar.setRange(0, 100)
+        self.mic_level_bar.setTextVisible(False)
+        self.mic_level_bar.setFixedHeight(10)
+        layout.addWidget(self.mic_level_bar)
+
+        self.mic_status_label = QLabel("Not recording.")
+        self.mic_status_label.setObjectName("Caption")
+        layout.addWidget(self.mic_status_label)
+
+        self.mic_live_canvas = MplCanvas(n_rows=1, figsize=(7, 1.3))
+        layout.addWidget(self.mic_live_canvas)
+        layout.addStretch()
+        return tab
+
+    def _on_mic_start(self):
+        self._mic_chunks = []
+        self.mic_start_btn.setEnabled(False)
+        self.mic_pause_btn.setEnabled(True)
+        self.mic_stop_btn.setEnabled(True)
+        self.mic_clear_btn.setEnabled(False)
+        self.mic_status_label.setText("🔴 Recording...")
+        self._set_status("Recording", "#c0392b")
+
+        self._mic_thread = MicRecorderThread(duration=30, fs=dsp.FS, parent=self)
+        self._mic_thread.level_update.connect(self._on_mic_level)
+        self._mic_thread.chunk_ready.connect(self._on_mic_chunk)
+        self._mic_thread.finished.connect(self._on_mic_finished)
+        self._mic_thread.start()
+
+    def _on_mic_pause(self):
+        if not self._mic_thread:
             return
-        # Both calls below use the same unchanged correlation primitives as
-        # the built-in demo tab (dsp.match_template, dsp.clip_similarity).
-        corr = dsp.match_template(self.target_audio, self.ref_audio)
-        peak_idx = int(np.argmax(np.abs(corr)))
-        peak_t = peak_idx / dsp.FS
-        score, offset_s = dsp.clip_similarity(self.ref_audio, self.target_audio)
+        paused = self.mic_pause_btn.text().startswith("⏸")
+        self._mic_thread.set_paused(paused)
+        self.mic_pause_btn.setText("▶ Resume" if paused else "⏸ Pause")
+        self.mic_status_label.setText("⏸ Paused." if paused else "🔴 Recording...")
 
-        self.upload_canvas.plot_waveforms(
-            [(self.target_audio, "Target recording"), (corr, "Cross-correlation with reference")],
-            "Matching reference against target — live")
+    def _on_mic_stop(self):
+        if self._mic_thread:
+            self._mic_thread.stop_recording()
+        self.mic_start_btn.setEnabled(True)
+        self.mic_pause_btn.setEnabled(False)
+        self.mic_pause_btn.setText("⏸ Pause")
+        self.mic_stop_btn.setEnabled(False)
 
-        self.upload_result_label.setText(
-            f"Best alignment at t = {peak_t:.2f}s in the target recording. "
-            f"Normalized similarity score: {score:.3f} "
-            f"({'likely match' if score > 0.3 else 'weak/no match'})."
+    def _on_mic_clear(self):
+        self._mic_chunks = []
+        self.mic_live_canvas.fig.clear()
+        self.mic_live_canvas.draw()
+        self.mic_clear_btn.setEnabled(False)
+        self.mic_status_label.setText("Not recording.")
+        self._on_remove_input()
+
+    def _on_mic_level(self, rms):
+        self.mic_level_bar.setValue(min(int(rms * 500), 100))
+
+    def _on_mic_chunk(self, chunk):
+        self._mic_chunks.append(chunk)
+        # Redraw the live waveform from real captured audio (not simulated)
+        if len(self._mic_chunks) % 3 == 0:  # throttle redraws for smoothness
+            buf = np.concatenate(self._mic_chunks)
+            self.mic_live_canvas.plot_waveforms([(buf, "Live mic input")], "Recording live...")
+
+    def _on_mic_finished(self, audio, fs):
+        self.mic_level_bar.setValue(0)
+        self.mic_status_label.setText(f"✅ Recorded {len(audio)/fs:.2f}s.")
+        self.mic_clear_btn.setEnabled(True)
+        self._set_status("Ready", "#2f6690")
+        if len(audio) > 1:
+            self._set_query(dsp.normalize(audio), "Microphone recording")
+            self.mic_live_canvas.plot_waveforms([(audio, "Recorded input")], "Final recording")
+
+    # ------------------------------------------------------------ Library panel
+    def _refresh_library_panel(self):
+        while self.library_grid.count():
+            item = self.library_grid.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        for i, (name, item) in enumerate(self.library.items()):
+            frame = QFrame()
+            frame.setStyleSheet("QFrame { background: rgba(255,255,255,0.7); border-radius: 10px; }")
+            v = QVBoxLayout(frame)
+            name_lab = QLabel(f"🎵 {name}")
+            name_lab.setStyleSheet("font-weight: 700;")
+            name_lab.setWordWrap(True)
+            v.addWidget(name_lab)
+            info_lab = QLabel(f"Category: Music  •  Duration: {item['duration_s']:.1f}s")
+            info_lab.setObjectName("Caption")
+            v.addWidget(info_lab)
+
+            transport = AudioTransportWidget()
+            transport.set_audio(item["audio"])
+            v.addWidget(transport)
+
+            demo_btn = QPushButton("▶ Use as Demo Query")
+            demo_btn.setObjectName("SecondaryButton")
+            demo_btn.clicked.connect(lambda checked=False, n=name: self._load_demo_query(n))
+            v.addWidget(demo_btn)
+
+            self.library_grid.addWidget(frame, i // 3, i % 3)
+
+    def _load_demo_query(self, library_name):
+        """One-click demo: carve a short, slightly-noisy excerpt out of a
+        real library track and use it as the query — the exact scenario the
+        matcher is designed to solve, with zero uploading required."""
+        full = self.library[library_name]["audio"]
+        fs = dsp.FS
+        dur_s = len(full) / fs
+        excerpt_len = min(5.0, max(1.0, dur_s * 0.3))
+        rng = np.random.default_rng(abs(hash(library_name)) % (2**32))
+        max_start = max(0.0, dur_s - excerpt_len)
+        start = rng.uniform(0, max_start) if max_start > 0 else 0.0
+        excerpt = full[int(start * fs):int((start + excerpt_len) * fs)]
+        excerpt = dsp.normalize(excerpt + 0.02 * rng.standard_normal(len(excerpt)))
+        self._set_query(excerpt, f"Demo excerpt of '{library_name}' ({excerpt_len:.1f}s @ {start:.1f}s)")
+        self._true_demo_source = library_name
+
+    # ------------------------------------------------------------ shared query setter
+    def _set_query(self, audio, label):
+        # Bound query length for responsiveness on very long uploads/recordings.
+        max_len = int(15.0 * dsp.FS)
+        if len(audio) > max_len:
+            audio = audio[:max_len]
+        self.query_audio = audio
+        self.query_source_label = label
+        self.query_info_label.setText(
+            f"Query source: {label}  |  Duration: {len(audio)/dsp.FS:.2f}s  |  "
+            f"RMS: {dsp.compute_rms(audio):.3f}  |  Peak: {dsp.compute_peak(audio):.3f}")
+        self.query_canvas.plot_waveforms([(audio, "Input")], "Input Waveform")
+        self.query_transport.set_audio(audio)
+        self.compare_input_transport.set_audio(audio)
+        self.search_btn.setEnabled(True)
+        self._reset_pipeline_visuals()
+
+    # ------------------------------------------------------------ pipeline viz
+    def _reset_pipeline_visuals(self):
+        self._set_stage(None)
+        self.pipeline_canvas.fig.clear()
+        self.pipeline_canvas.draw()
+        while self.progress_grid.count():
+            item = self.progress_grid.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.progress_bars = {}
+
+    def _set_stage(self, active_index):
+        for i, lab in enumerate(self.stage_labels):
+            if active_index is None:
+                lab.setStyleSheet("padding: 4px 8px; border-radius: 8px; background: #eef5fb;")
+            elif i < active_index:
+                lab.setStyleSheet("padding: 4px 8px; border-radius: 8px; background: #d3f0e8; color: #1e8a5f; font-weight: 600;")
+            elif i == active_index:
+                lab.setStyleSheet("padding: 4px 8px; border-radius: 8px; background: #6fb1ea; color: white; font-weight: 700;")
+            else:
+                lab.setStyleSheet("padding: 4px 8px; border-radius: 8px; background: #eef5fb;")
+
+    def _set_status(self, text, color):
+        self.status_label.setText(text)
+        self.status_label.setStyleSheet(f"font-weight: 700; color: {color};")
+
+    # ------------------------------------------------------------ run matching
+    def _start_matching(self):
+        if self.query_audio is None or len(self.library) == 0:
+            return
+        self.search_btn.setEnabled(False)
+        self._set_status("Processing", "#b8860b")
+        self._reset_pipeline_visuals()
+        self._set_stage(0)  # Input
+
+        # Real "preprocessing" stage: show the normalized query alongside raw
+        preprocessed = dsp.normalize(self.query_audio)
+        self._set_stage(1)
+
+        # Real "feature extraction" stage: compute and show the query's spectrogram
+        f, t, Sxx = dsp.compute_spectrogram(self.query_audio)
+        self.pipeline_canvas.fig.clear()
+        axes = self.pipeline_canvas.fig.subplots(3, 1)
+        ts = np.arange(len(self.query_audio)) / dsp.FS
+        axes[0].plot(ts, self.query_audio, linewidth=0.7, color="#2f6690")
+        axes[0].set_ylabel("Raw", fontsize=7)
+        axes[0].tick_params(labelsize=6)
+        axes[1].plot(ts, preprocessed, linewidth=0.7, color="#4a8fa3")
+        axes[1].set_ylabel("Preprocessed", fontsize=7)
+        axes[1].tick_params(labelsize=6)
+        axes[2].pcolormesh(t, f, Sxx, shading='auto', cmap='viridis')
+        axes[2].set_ylabel("Features (Hz)", fontsize=7)
+        axes[2].set_ylim(0, 4000)
+        axes[2].tick_params(labelsize=6)
+        self.pipeline_canvas.fig.suptitle("Preprocessing → Feature Extraction (live query data)", fontsize=9)
+        self.pipeline_canvas.fig.tight_layout()
+        self.pipeline_canvas.draw()
+        self._set_stage(2)
+
+        # Progress rows, one per library track — filled in live by the worker
+        for i, name in enumerate(self.library.keys()):
+            lab = QLabel(name)
+            lab.setObjectName("Caption")
+            bar = QProgressBar()
+            bar.setRange(0, 100)
+            bar.setValue(0)
+            self.progress_grid.addWidget(lab, i, 0)
+            self.progress_grid.addWidget(bar, i, 1)
+            self.progress_bars[name] = bar
+
+        algorithm = self.algo_combo.currentText()
+        self._set_stage(3)  # Algorithm Matching
+        self._worker = MatchWorkerThread(self.query_audio, self.library, algorithm, parent=self)
+        self._worker.progress.connect(self._on_match_progress)
+        self._worker.finished_matching.connect(self._on_match_finished)
+        self._worker.failed.connect(self._on_match_failed)
+        self._worker.start()
+
+    def _on_match_progress(self, name, fraction):
+        if name in self.progress_bars:
+            self.progress_bars[name].setValue(int(fraction * 100))
+
+    def _on_match_failed(self, message):
+        self._set_status("Error", "#c0392b")
+        self.search_btn.setEnabled(True)
+        QMessageBox.warning(self, "Matching failed", f"Could not complete matching:\n{message}")
+
+    def _on_match_finished(self, result):
+        self._set_stage(4)  # Scoring
+        self._last_result = result
+        self._set_stage(5)  # Ranking
+        self._render_results(result)
+        self._set_stage(6)  # Final Match
+        self._set_status("Complete", "#1e8a5f")
+        self.search_btn.setEnabled(True)
+
+    # ------------------------------------------------------------ results
+    def _render_results(self, result):
+        ranked = result["ranked"]
+        if not ranked:
+            self.best_match_label.setText("No library tracks available to match against.")
+            return
+
+        best = ranked[0]
+        conf_text, conf_color = _confidence_label(best["score"])
+        self.best_match_label.setText(
+            f"🏆 Best Match: {best['name']}\n"
+            f"Similarity: {best['score']*100:.1f}%   |   Algorithm: {result['algorithm']}   |   "
+            f"Time: {result['elapsed_s']:.2f}s   |   {conf_text}"
         )
+        self.best_match_label.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {conf_color};")
+
+        # Ranked alternatives list
+        while self.ranked_list_layout.count():
+            item = self.ranked_list_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        for i, r in enumerate(ranked):
+            is_best = i == 0
+            row = QLabel(f"#{i+1}  {r['name']}   {r['score']*100:.1f}%" + ("   ← Best Match" if is_best else ""))
+            row.setStyleSheet(
+                "font-weight: 700; color: #1e8a5f; padding: 4px 8px; background: rgba(143,211,199,0.3); border-radius: 8px;"
+                if is_best else
+                "color: #445872; padding: 4px 8px;"
+            )
+            self.ranked_list_layout.addWidget(row)
+
+        # Comparison view
+        matched_audio = self.library[best["name"]]["audio"]
+        self.compare_canvas.plot_waveforms(
+            [(self.query_audio, "Input"), (matched_audio, "Matched")],
+            f"Input vs. Matched — {best['name']}")
+        self.compare_match_transport.set_audio(matched_audio)
+        self.compare_input_transport.position_changed.connect(self.compare_canvas.update_playhead)
+        self.compare_match_transport.position_changed.connect(self.compare_canvas.update_playhead)
+
+        self._matched_library_name = best["name"]
+        self.download_btn.setEnabled(True)
+        self.download_processed_btn.setEnabled(True)
+
+    # ------------------------------------------------------------ download
+    def _on_download_original(self):
+        if not hasattr(self, "_matched_library_name"):
+            return
+        name = self._matched_library_name
+        src_path = self.library[name]["path"]
+        ext = os.path.splitext(src_path)[1]
+        default_name = f"{name}{ext}"
+        dest, _ = QFileDialog.getSaveFileName(self, "Save Matched Audio", default_name)
+        if not dest:
+            return
+        try:
+            shutil.copyfile(src_path, dest)
+            QMessageBox.information(self, "Download complete", f"Saved to:\n{dest}")
+        except Exception as e:
+            QMessageBox.warning(self, "Download failed", f"Could not save file:\n{e}")
+
+    def _on_download_processed(self):
+        if not hasattr(self, "_matched_library_name"):
+            return
+        name = self._matched_library_name
+        audio = self.library[name]["audio"]
+        default_name = f"{name}_processed.wav"
+        dest, _ = QFileDialog.getSaveFileName(self, "Save Processed Audio (WAV)", default_name)
+        if not dest:
+            return
+        try:
+            dsp.write_wav_file(dest, audio, dsp.FS)
+            QMessageBox.information(self, "Download complete", f"Saved to:\n{dest}")
+        except Exception as e:
+            QMessageBox.warning(self, "Download failed", f"Could not save file:\n{e}")

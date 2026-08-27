@@ -16,19 +16,25 @@ import dsp_core as dsp
 class MicRecorderThread(QThread):
     """Records audio from the microphone in a background thread.
     Shared helper used by pages that need microphone input (Equalizer,
-    Morse Code Converter) — mirrors the recorder already used privately by
-    the Noise Remover page, without touching that page's own copy."""
+    Morse Code Converter, Audio Matcher) — mirrors the recorder already
+    used privately by the Noise Remover page, without touching that page's
+    own copy."""
     finished = Signal(np.ndarray, int)  # audio_data, sample_rate
     level_update = Signal(float)         # RMS level for a VU meter
+    chunk_ready = Signal(np.ndarray)     # raw ~50ms chunk, for live waveform draw
 
     def __init__(self, duration=5, fs=None, parent=None):
         super().__init__(parent)
         self.duration = duration
         self.fs = fs or dsp.FS
         self._stop_flag = False
+        self._paused = False
 
     def stop_recording(self):
         self._stop_flag = True
+
+    def set_paused(self, paused):
+        self._paused = paused
 
     def run(self):
         try:
@@ -42,9 +48,13 @@ class MicRecorderThread(QThread):
         total_blocks = max(1, int(self.duration * self.fs / block_size))
 
         def callback(indata, frame_count, time_info, status):
-            frames.append(indata[:, 0].copy())
+            if self._paused:
+                return
+            chunk = indata[:, 0].copy()
+            frames.append(chunk)
             rms = np.sqrt(np.mean(indata ** 2))
             self.level_update.emit(float(rms))
+            self.chunk_ready.emit(chunk)
 
         try:
             with sd.InputStream(samplerate=self.fs, channels=1,
@@ -285,3 +295,109 @@ class AudioPlayButton(QWidget):
         self.playback_active_changed.emit(is_playing)
         if not is_playing:
             self.position_changed.emit(0.0)
+
+
+class AudioTransportWidget(QWidget):
+    """A fuller audio transport control: Play / Pause / Stop / Replay,
+    an elapsed/duration label, and the same position_changed /
+    playback_active_changed signals as AudioPlayButton for playhead sync.
+    Used where a page needs real Play/Pause/Stop/Replay controls (Audio
+    Matcher's uploaded/recorded query and matched-result playback), not
+    just a single play button."""
+
+    position_changed = Signal(float)
+    playback_active_changed = Signal(bool)
+
+    _tempfiles = []
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.play_btn = QPushButton("▶ Play")
+        self.pause_btn = QPushButton("⏸ Pause")
+        self.stop_btn = QPushButton("⏹ Stop")
+        self.replay_btn = QPushButton("⟲ Replay")
+        for b in (self.play_btn, self.pause_btn, self.stop_btn, self.replay_btn):
+            b.setObjectName("PlayButton")
+            layout.addWidget(b)
+
+        self.time_label = QLabel("0:00 / 0:00")
+        self.time_label.setObjectName("Caption")
+        layout.addWidget(self.time_label)
+        layout.addStretch()
+
+        self.play_btn.clicked.connect(self.play)
+        self.pause_btn.clicked.connect(self.pause)
+        self.stop_btn.clicked.connect(self.stop)
+        self.replay_btn.clicked.connect(self.replay)
+
+        self._player = QMediaPlayer(self)
+        self._audio_out = QAudioOutput(self)
+        self._player.setAudioOutput(self._audio_out)
+        self._path = None
+        self._duration_ms = 0
+
+        self._player.durationChanged.connect(self._on_duration_changed)
+        self._player.positionChanged.connect(self._on_position_changed)
+        self._player.playbackStateChanged.connect(self._on_state_changed)
+        self._set_controls_enabled(False)
+
+    def set_audio(self, x, fs=dsp.FS):
+        wav_bytes = dsp.to_wav_bytes(x, fs)
+        f = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        f.write(wav_bytes)
+        f.close()
+        self._path = f.name
+        AudioTransportWidget._tempfiles.append(f.name)
+        self._player.setSource(QUrl.fromLocalFile(self._path))
+        self._set_controls_enabled(True)
+        self.time_label.setText("0:00 / 0:00")
+
+    def clear(self):
+        self._player.stop()
+        self._player.setSource(QUrl())
+        self._path = None
+        self._duration_ms = 0
+        self._set_controls_enabled(False)
+        self.time_label.setText("0:00 / 0:00")
+
+    def _set_controls_enabled(self, enabled):
+        for b in (self.play_btn, self.pause_btn, self.stop_btn, self.replay_btn):
+            b.setEnabled(enabled)
+
+    def play(self):
+        if self._path:
+            self._player.play()
+
+    def pause(self):
+        self._player.pause()
+
+    def stop(self):
+        self._player.stop()
+        self._player.setPosition(0)
+
+    def replay(self):
+        if self._path:
+            self._player.setPosition(0)
+            self._player.play()
+
+    @staticmethod
+    def _fmt(ms):
+        s = max(0, int(ms / 1000))
+        return f"{s // 60}:{s % 60:02d}"
+
+    def _on_duration_changed(self, duration_ms):
+        self._duration_ms = duration_ms
+        self.time_label.setText(f"{self._fmt(0)} / {self._fmt(duration_ms)}")
+
+    def _on_position_changed(self, position_ms):
+        self.time_label.setText(f"{self._fmt(position_ms)} / {self._fmt(self._duration_ms)}")
+        if self._duration_ms > 0:
+            self.position_changed.emit(min(1.0, position_ms / self._duration_ms))
+
+    def _on_state_changed(self, state):
+        is_playing = state == QMediaPlayer.PlaybackState.PlayingState
+        self.playback_active_changed.emit(is_playing)

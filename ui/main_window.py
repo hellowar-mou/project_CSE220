@@ -5,12 +5,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ui.wave_widget import WaveBackground
+from ui import theme as theme_module
 from ui.pages.home_page import HomePage
 from ui.pages.noise_remover_page import NoiseRemoverPage
 from ui.pages.equalizer_page import EqualizerPage
 from ui.pages.editor_page import EditorPage
 from ui.pages.morse_page import MorsePage
 from ui.pages.matcher_page import MatcherPage
+from ui.pages.settings_page import SettingsPage
 
 
 class MainWindow(QMainWindow):
@@ -48,7 +50,7 @@ class MainWindow(QMainWindow):
         self.nav = QListWidget()
         self.nav.setObjectName("NavList")
         for label in ["Home", "Noise Remover", "Equalizer", "Editor",
-                      "Morse Code Converter", "Audio Matcher"]:
+                      "Morse Code Converter", "Audio Matcher", "Settings"]:
             QListWidgetItem(label, self.nav)
         self.nav.setCurrentRow(0)
         self.nav.currentRowChanged.connect(self._on_nav)
@@ -71,6 +73,7 @@ class MainWindow(QMainWindow):
             "Editor": EditorPage,
             "Morse Code Converter": MorsePage,
             "Audio Matcher": MatcherPage,
+            "Settings": SettingsPage,
         }
         # Home is built eagerly; the rest build lazily on first visit (faster startup)
         home = HomePage()
@@ -78,6 +81,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(home)
 
         root.addWidget(self.stack, 1)
+
+        theme_module.add_listener(self._on_theme_changed)
 
     def resizeEvent(self, event):
         self.bg.setGeometry(self.centralWidget().rect())
@@ -91,6 +96,23 @@ class MainWindow(QMainWindow):
             self.pages[label] = page
             self.stack.addWidget(page)
         self.stack.setCurrentWidget(self.pages[label])
+
+    def _on_theme_changed(self):
+        """Called after every theme switch (light<->dark). Widget
+        stylesheets and plot canvases are already re-colored automatically
+        by the theme system itself (see ui/theme.py); this hook exists for
+        the rare page-specific extra some pages register via
+        page.apply_theme(), for anything beyond generic stylesheet/canvas
+        recoloring (e.g. re-running a page's own redraw method so its most
+        recently plotted data reflects fresh chrome immediately rather
+        than waiting for the next natural redraw)."""
+        for page in self.pages.values():
+            apply_fn = getattr(page, "apply_theme", None)
+            if callable(apply_fn):
+                try:
+                    apply_fn()
+                except Exception:
+                    pass
 
     def _on_logout(self):
         self._logout_callback()

@@ -57,8 +57,85 @@ QLineEdit {
     border-radius: 10px;
     padding: 8px 10px;
     font-size: 13px;
+    color: #33465c;
 }
 QLineEdit:focus {
+    border: 1px solid #6fb1ea;
+}
+
+QComboBox {
+    background: white;
+    border: 1px solid #d6e2ef;
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #33465c;
+}
+QComboBox:focus {
+    border: 1px solid #6fb1ea;
+}
+QComboBox::drop-down {
+    border: none;
+}
+QComboBox QAbstractItemView {
+    background: white;
+    color: #33465c;
+    border: 1px solid #d6e2ef;
+    selection-background-color: #6fb1ea;
+    selection-color: white;
+    outline: none;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #dbe8f4;
+    border-radius: 3px;
+}
+QSlider::handle:horizontal {
+    background: #6fb1ea;
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    border-radius: 8px;
+}
+QSlider::sub-page:horizontal {
+    background: #8fd3c7;
+    border-radius: 3px;
+}
+QSlider::groove:vertical {
+    width: 6px;
+    background: #dbe8f4;
+    border-radius: 3px;
+}
+QSlider::handle:vertical {
+    background: #6fb1ea;
+    width: 16px;
+    height: 16px;
+    margin: 0 -6px;
+    border-radius: 8px;
+}
+QSlider::add-page:vertical {
+    background: #dbe8f4;
+    border-radius: 3px;
+}
+QSlider::sub-page:vertical {
+    background: #8fd3c7;
+    border-radius: 3px;
+}
+
+QCheckBox {
+    color: #33465c;
+    spacing: 8px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid #d6e2ef;
+    background: white;
+}
+QCheckBox::indicator:checked {
+    background: #6fb1ea;
     border: 1px solid #6fb1ea;
 }
 
@@ -86,6 +163,12 @@ QPushButton#SecondaryButton {
 }
 QPushButton#SecondaryButton:hover {
     background: #eaf4ff;
+}
+QPushButton#SecondaryButton:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #6fb1ea, stop:1 #8fd3c7);
+    color: white;
+    border: 1px solid transparent;
 }
 QPushButton#PlayButton {
     background: #eaf6f4;

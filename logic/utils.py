@@ -138,3 +138,18 @@ def compute_snr(clean, noisy):
     signal_power = np.mean(clean ** 2)
     noise_power = np.mean(noise ** 2) + 1e-12
     return 10 * np.log10(signal_power / noise_power)
+
+
+def compute_dominant_frequency(x, fs=FS):
+    """Frequency (Hz) of the strongest spectral component — used in
+    technical info panels ('current dominant frequency')."""
+    x = np.asarray(x, dtype=float)
+    if len(x) < 2:
+        return 0.0
+    X = np.fft.rfft(x)
+    freqs = np.fft.rfftfreq(len(x), d=1 / fs)
+    mag = np.abs(X)
+    if len(mag) <= 1:
+        return 0.0
+    mag[0] = 0  # ignore DC
+    return float(freqs[np.argmax(mag)])

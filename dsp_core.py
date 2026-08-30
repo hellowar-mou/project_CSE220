@@ -15,7 +15,7 @@ from logic.utils import (
     FS, _rng, t_axis, normalize, to_wav_bytes, write_wav_file,
     load_audio_file, load_sample_song,
     spectrum_db, compute_spectrogram, compute_snr,
-    compute_rms, compute_peak,
+    compute_rms, compute_peak, compute_dominant_frequency,
 )
 
 # ---- noise remover
@@ -30,6 +30,8 @@ from logic.noise_remover import (
 # ---- equalizer
 from logic.equalizer import (
     band_split, equalize, equalizer_frequency_response,
+    FS_EQ, EQ_BANDS, EQ_ALGORITHMS, EQ_PRESETS,
+    apply_nband_eq, nband_eq_frequency_response,
 )
 
 # ---- editor
@@ -42,6 +44,8 @@ from logic.morse import (
     MORSE, TEXT_TO_MORSE,
     synth_morse, decode_morse,
     detect_tone_freq, detect_unit_duration, build_morse_toolbox,
+    DECODE_ALGORITHMS, text_to_morse_string, morse_string_to_text,
+    compute_envelope, keyed_to_text, classify_morse_segments,
 )
 
 # ---- matcher

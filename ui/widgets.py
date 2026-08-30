@@ -13,6 +13,16 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 import dsp_core as dsp
 
 
+# Chrome colors (background/ticks/spines/text) applied on top of whatever
+# is plotted, by MplCanvas.recolor() / ui.theme.recolor_figure() — the
+# plotted data-line colors themselves are left as each call site chose,
+# since the existing blue/teal tones already read fine on both themes.
+_PLOT_COLORS = {
+    "light": {"text": "#33465c", "grid": "#8395ac", "face": "none"},
+    "dark": {"text": "#dce6f2", "grid": "#3a4a5e", "face": "#131a24"},
+}
+
+
 class MicRecorderThread(QThread):
     """Records audio from the microphone in a background thread.
     Shared helper used by pages that need microphone input (Equalizer,
@@ -146,6 +156,41 @@ class MicRecordWidget(QWidget):
             self.recording_ready.emit(audio, fs)
 
 
+class CollapsiblePanel(QWidget):
+    """A titled panel that expands/collapses on click — used for secondary
+    details (like a technical info panel) that shouldn't always take up
+    screen space."""
+
+    def __init__(self, title, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QVBoxLayout, QFrame
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+
+        self.toggle_btn = QPushButton(f"▸ {title}")
+        self.toggle_btn.setObjectName("SecondaryButton")
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.clicked.connect(self._on_toggle)
+        outer.addWidget(self.toggle_btn)
+
+        self.content = QFrame()
+        self.content.setStyleSheet("QFrame { background: rgba(255,255,255,0.5); border-radius: 10px; }")
+        self.content_layout = QVBoxLayout(self.content)
+        self.content.setVisible(False)
+        outer.addWidget(self.content)
+
+        self._title = title
+
+    def _on_toggle(self, checked):
+        self.content.setVisible(checked)
+        arrow = "▾" if checked else "▸"
+        self.toggle_btn.setText(f"{arrow} {self._title}")
+
+    def body_layout(self):
+        return self.content_layout
+
+
 class MplCanvas(FigureCanvasQTAgg):
     """A matplotlib Figure embedded as a Qt widget, styled to match the light theme."""
 
@@ -158,6 +203,11 @@ class MplCanvas(FigureCanvasQTAgg):
         self._playhead_axes = []   # time-domain axes eligible for a playhead
         self._playhead_duration_s = 0
         self._playhead_lines = []
+
+        from ui import theme as theme_module
+        theme_module.register_canvas(self)
+        if theme_module.get_current_mode() == "dark":
+            theme_module.recolor_figure(self.fig, "dark")
 
     def plot_waveforms(self, signals_labels, title, fs=dsp.FS, xlim=None):
         self.fig.clear()
@@ -185,6 +235,8 @@ class MplCanvas(FigureCanvasQTAgg):
         self._playhead_duration_s = max_len / fs
         self._playhead_lines = []
 
+        from ui import theme as theme_module
+        theme_module.recolor_figure(self.fig, theme_module.get_current_mode())
         self.draw()
 
     def update_playhead(self, fraction):
@@ -229,7 +281,16 @@ class MplCanvas(FigureCanvasQTAgg):
         axes[-1].set_xlabel("Frequency (Hz)", fontsize=8)
         self.fig.suptitle(title, fontsize=10)
         self.fig.tight_layout()
+        from ui import theme as theme_module
+        theme_module.recolor_figure(self.fig, theme_module.get_current_mode())
         self.draw()
+
+    def recolor(self):
+        """Public hook: re-tint this canvas's chrome to the current theme
+        without touching whatever data is plotted. Safe to call any time,
+        including from pages that don't otherwise know theming exists."""
+        from ui import theme as theme_module
+        theme_module.recolor_figure(self.fig, theme_module.get_current_mode())
 
 
 class AudioPlayButton(QWidget):

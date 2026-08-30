@@ -1,6 +1,9 @@
 import sys
 from PySide6.QtWidgets import QApplication
 
+from ui import theme as theme_module
+theme_module.install_theme_patch()  # must happen before any QWidget exists
+
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
 
@@ -30,8 +33,13 @@ class AppController:
 def main():
     app = QApplication(sys.argv)
 
+    # Load the previously chosen theme (defaults to light) before any
+    # widget is created, so the very first frame already matches it.
+    saved_mode = theme_module.load_saved_theme()
+    theme_module.set_current_mode(saved_mode)
+
     with open("ui/theme.qss") as f:
-        app.setStyleSheet(f.read())
+        app.setStyleSheet(f.read())  # registered+recolored transparently if mode is dark
 
     controller = AppController()
     sys.exit(app.exec())

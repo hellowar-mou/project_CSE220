@@ -3,12 +3,15 @@ import numpy as np
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QFrame,
     QPushButton, QFileDialog, QTabWidget, QComboBox, QSlider, QDialog,
-    QScrollArea, QApplication, QCheckBox
+    QScrollArea, QApplication, QCheckBox, QGridLayout, QSizePolicy
 )
 from PySide6.QtCore import Qt, QTimer
 
 import dsp_core as dsp
-from ui.widgets import MplCanvas, AudioTransportWidget, MicRecordWidget
+from ui.widgets import (
+    MplCanvas, AudioTransportWidget, MicRecordWidget, WaveformControls,
+    show_module_help, ModuleGuide, AudioInputCard,
+)
 
 
 SEGMENT_COLORS = {
@@ -83,6 +86,8 @@ class MorsePage(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.setObjectName("WorkflowPage")
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.toolbox = dsp.build_morse_toolbox()
         self.decode_source_audio = None
         self.current_segments = []
@@ -99,23 +104,51 @@ class MorsePage(QWidget):
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         header = QFrame()
-        header.setStyleSheet("QFrame { background: rgba(255,255,255,0.78); border-radius: 14px; }")
+        header.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(111,177,234,0.15), stop:1 rgba(143,211,199,0.15));
+                border-radius: 16px;
+                border: 1px solid rgba(111,177,234,0.2);
+            }
+        """)
         h_layout = QHBoxLayout(header)
+        h_layout.setContentsMargins(20, 16, 20, 16)
         title_col = QVBoxLayout()
+        title_col.setSpacing(4)
         title = QLabel("📡 Morse Code Converter")
-        title.setObjectName("SectionTitle")
+        title.setStyleSheet(
+            "font-size: 20px; font-weight: 700; color: #2f3e50; "
+            "background: transparent; border: none;"
+        )
         caption = QLabel("Encode text to Morse tones, or decode a recording back to text. "
                           "Choose a detection algorithm; tone pitch and speed auto-detect.")
-        caption.setObjectName("Caption")
+        caption.setStyleSheet(
+            "font-size: 11px; color: #6b7f96; "
+            "background: transparent; border: none;"
+        )
         caption.setWordWrap(True)
         title_col.addWidget(title)
         title_col.addWidget(caption)
         h_layout.addLayout(title_col, 1)
+        help_btn = QPushButton("? Help")
+        help_btn.setObjectName("SecondaryButton")
+        help_btn.setToolTip("Show a short guide to the Morse Code Converter.")
+        help_btn.clicked.connect(lambda: show_module_help(
+            self, "Morse Code Converter Help", [
+                "Encode: enter text, adjust tone and speed, then generate audio.",
+                "Decode: upload, record, or select a toolbox Morse clip.",
+                "Press Analyze to detect dots and dashes and decode the message.",
+                "The waveform and intermediate stages show how the result was produced.",
+            ]))
+        h_layout.addWidget(help_btn)
 
         self.toolbox_btn = QPushButton("🧰 Toolbox")
         self.toolbox_btn.setObjectName("SecondaryButton")
+        self.toolbox_btn.setToolTip("Browse built-in Morse clips and use one as decoder input.")
         self.toolbox_btn.clicked.connect(self._open_toolbox)
         h_layout.addWidget(self.toolbox_btn)
 
@@ -129,6 +162,13 @@ class MorsePage(QWidget):
         self.mode_toggle.clicked.connect(self._toggle_analysis_mode)
         h_layout.addWidget(self.mode_toggle)
         layout.addWidget(header)
+        layout.addWidget(ModuleGuide(
+            "morse",
+            "Upload or record a Morse signal, or choose a toolbox demo. "
+            "Use Analyze to detect tones, dots, dashes, and decoded text."))
+        workflow = QLabel("INPUT  →  PROCESSING  →  OUTPUT")
+        workflow.setToolTip("Enter or load Morse/audio input, analyze it, then review the decoded output.")
+        layout.addWidget(workflow)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_encode_tab(), "Encode (Text → Audio)")
@@ -156,46 +196,54 @@ class MorsePage(QWidget):
         morse_row.addWidget(self.morse_display, 1)
         layout.addLayout(morse_row)
 
-        controls_grid = QHBoxLayout()
+        controls_grid = QGridLayout()
+        controls_grid.setHorizontalSpacing(18)
+        controls_grid.setVerticalSpacing(8)
         tone_col = QVBoxLayout()
         self.tone_label = QLabel("Tone pitch: 700 Hz")
         self.tone_slider = QSlider(Qt.Horizontal)
         self.tone_slider.setRange(300, 1200)
         self.tone_slider.setValue(700)
+        self.tone_slider.setToolTip("Set the generated Morse tone frequency in hertz.")
         self.tone_slider.valueChanged.connect(self._on_encode_change)
         tone_col.addWidget(self.tone_label)
         tone_col.addWidget(self.tone_slider)
-        controls_grid.addLayout(tone_col)
+        controls_grid.addLayout(tone_col, 0, 0)
 
         wpm_col = QVBoxLayout()
         self.wpm_label = QLabel("Speed: 15 WPM")
         self.wpm_slider = QSlider(Qt.Horizontal)
         self.wpm_slider.setRange(5, 40)
         self.wpm_slider.setValue(15)
+        self.wpm_slider.setToolTip("Set Morse transmission speed in words per minute.")
         self.wpm_slider.valueChanged.connect(self._on_encode_change)
         wpm_col.addWidget(self.wpm_label)
         wpm_col.addWidget(self.wpm_slider)
-        controls_grid.addLayout(wpm_col)
+        controls_grid.addLayout(wpm_col, 0, 1)
 
         vol_col = QVBoxLayout()
         self.volume_label = QLabel("Volume: 90%")
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(10, 100)
         self.volume_slider.setValue(90)
+        self.volume_slider.setToolTip("Set generated audio volume.")
         self.volume_slider.valueChanged.connect(self._on_encode_change)
         vol_col.addWidget(self.volume_label)
         vol_col.addWidget(self.volume_slider)
-        controls_grid.addLayout(vol_col)
+        controls_grid.addLayout(vol_col, 1, 0)
 
         fade_col = QVBoxLayout()
         self.fade_label = QLabel("Fade: 5 ms")
         self.fade_slider = QSlider(Qt.Horizontal)
         self.fade_slider.setRange(0, 30)
         self.fade_slider.setValue(5)
+        self.fade_slider.setToolTip("Smooth generated tone edges to reduce clicks.")
         self.fade_slider.valueChanged.connect(self._on_encode_change)
         fade_col.addWidget(self.fade_label)
         fade_col.addWidget(self.fade_slider)
-        controls_grid.addLayout(fade_col)
+        controls_grid.addLayout(fade_col, 1, 1)
+        controls_grid.setColumnStretch(0, 1)
+        controls_grid.setColumnStretch(1, 1)
         layout.addLayout(controls_grid)
 
         gen_row = QHBoxLayout()
@@ -210,7 +258,10 @@ class MorsePage(QWidget):
         layout.addLayout(gen_row)
 
         self.encode_canvas = MplCanvas(n_rows=1, figsize=(7, 1.6))
+        self.encode_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.encode_canvas.setFixedHeight(220)
         layout.addWidget(self.encode_canvas)
+        layout.addWidget(WaveformControls(self.encode_canvas))
 
         row = QHBoxLayout()
         self.encode_transport = AudioTransportWidget()
@@ -306,9 +357,19 @@ class MorsePage(QWidget):
         self.decode_source_label.setObjectName("Caption")
         self.decode_source_label.setWordWrap(True)
         layout.addWidget(self.decode_source_label)
+        self.decode_input_card = AudioInputCard()
+        self.decode_input_card.replace_requested.connect(self._on_upload)
+        self.decode_input_card.remove_requested.connect(self._on_clear_decode)
+        layout.addWidget(self.decode_input_card)
+        self.decode_empty_label = QLabel(
+            "🎵 No audio loaded\nLoad a Morse signal and press Analyze.")
+        self.decode_empty_label.setObjectName("HintLabel")
+        layout.addWidget(self.decode_empty_label)
 
         # ---- detection controls
-        det_row = QHBoxLayout()
+        det_row = QGridLayout()
+        det_row.setHorizontalSpacing(18)
+        det_row.setVerticalSpacing(8)
         algo_col = QVBoxLayout()
         algo_col.addWidget(QLabel("Algorithm:"))
         self.algo_combo = QComboBox()
@@ -320,7 +381,7 @@ class MorsePage(QWidget):
         )
         self.algo_combo.currentTextChanged.connect(self._on_algo_or_threshold_change)
         algo_col.addWidget(self.algo_combo)
-        det_row.addLayout(algo_col)
+        det_row.addLayout(algo_col, 0, 0)
 
         thresh_col = QVBoxLayout()
         self.threshold_label = QLabel("Detection threshold: 0.25")
@@ -332,12 +393,12 @@ class MorsePage(QWidget):
         self.threshold_slider.valueChanged.connect(self._on_algo_or_threshold_change)
         thresh_col.addWidget(self.threshold_label)
         thresh_col.addWidget(self.threshold_slider)
-        det_row.addLayout(thresh_col)
+        det_row.addLayout(thresh_col, 0, 1)
 
         self.manual_timing_check = QCheckBox("Manual timing")
         self.manual_timing_check.setToolTip("Override auto-detected dot duration with the slider below.")
         self.manual_timing_check.toggled.connect(self._on_algo_or_threshold_change)
-        det_row.addWidget(self.manual_timing_check)
+        det_row.addWidget(self.manual_timing_check, 1, 0)
 
         unit_col = QVBoxLayout()
         self.unit_label = QLabel("Unit (manual): 80 ms")
@@ -347,12 +408,22 @@ class MorsePage(QWidget):
         self.unit_slider.valueChanged.connect(self._on_algo_or_threshold_change)
         unit_col.addWidget(self.unit_label)
         unit_col.addWidget(self.unit_slider)
-        det_row.addLayout(unit_col)
+        det_row.addLayout(unit_col, 1, 1)
+        det_row.setColumnStretch(0, 1)
+        det_row.setColumnStretch(1, 1)
 
         self.auto_detect_btn = QPushButton("🎯 Auto-Detect Timing")
         self.auto_detect_btn.setObjectName("SecondaryButton")
+        self.auto_detect_btn.setToolTip(
+            "Automatically estimate the tone frequency and timing from the input.")
         self.auto_detect_btn.clicked.connect(self._on_auto_detect)
-        det_row.addWidget(self.auto_detect_btn)
+        det_row.addWidget(self.auto_detect_btn, 2, 0)
+        self.analyze_btn = QPushButton("🔎 Analyze")
+        self.analyze_btn.setObjectName("PrimaryButton")
+        self.analyze_btn.setEnabled(False)
+        self.analyze_btn.setToolTip("Load a Morse signal before analyzing it.")
+        self.analyze_btn.clicked.connect(self._run_decode)
+        det_row.addWidget(self.analyze_btn, 2, 1)
         layout.addLayout(det_row)
 
         # ---- live progressive decode display
@@ -388,6 +459,7 @@ class MorsePage(QWidget):
         # ---- decode pipeline canvas
         self.decode_canvas = MplCanvas(n_rows=4, figsize=(7, 1.4))
         layout.addWidget(self.decode_canvas)
+        layout.addWidget(WaveformControls(self.decode_canvas))
 
         row = QHBoxLayout()
         self.decode_player = AudioTransportWidget()
@@ -431,6 +503,8 @@ class MorsePage(QWidget):
     def _load_from_toolbox(self, label):
         item = self.toolbox[label]
         self.decode_source_audio = item["audio"]
+        self.decode_input_card.set_audio(
+            self.decode_source_audio, dsp.FS, filename=label, source="Built-in Demo")
         self.decode_source_label.setText(
             f"\U0001F9F0 Toolbox clip: '{label}'  (expected message: {item['message']})")
         self.tabs.setCurrentIndex(1)
@@ -446,6 +520,9 @@ class MorsePage(QWidget):
         try:
             audio, orig_fs = dsp.load_audio_file(path, target_fs=dsp.FS)
             self.decode_source_audio = audio
+            self.decode_input_card.set_audio(
+                audio, dsp.FS, filename=os.path.basename(path),
+                source="Uploaded File", channels=1)
             self.decode_source_label.setText(
                 f"✅ {os.path.basename(path)}  ({orig_fs} Hz → {dsp.FS} Hz, {len(audio)/dsp.FS:.2f}s)")
             self._run_decode()
@@ -454,6 +531,9 @@ class MorsePage(QWidget):
 
     def _on_recording_ready(self, audio, fs):
         self.decode_source_audio = dsp.normalize(audio)
+        self.decode_input_card.set_audio(
+            self.decode_source_audio, fs, filename="Microphone recording",
+            source="Microphone Recording", channels=1)
         self.decode_source_label.setText(f"🎙️ Recorded {len(audio)/fs:.2f}s at {fs} Hz")
         self._run_decode()
 
@@ -473,6 +553,8 @@ class MorsePage(QWidget):
         if self.decode_source_audio is None:
             return
         audio = self.decode_source_audio
+        self.decode_empty_label.setVisible(False)
+        self.analyze_btn.setEnabled(True)
         algorithm = self.algo_combo.currentText()
         threshold = self.threshold_slider.value() / 100.0
         manual_unit = (self.unit_slider.value() / 1000.0) if self.manual_timing_check.isChecked() else None
@@ -565,6 +647,9 @@ class MorsePage(QWidget):
         self.decode_morse_edit.clear()
         self.decode_canvas.fig.clear()
         self.decode_canvas.draw()
+        self.decode_input_card.set_audio(None)
+        self.decode_empty_label.setVisible(True)
+        self.analyze_btn.setEnabled(False)
 
     # ------------------------------------------------------------- analysis mode
     def _toggle_analysis_mode(self):

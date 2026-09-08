@@ -100,3 +100,15 @@ Good places to split work by file, so you don't collide on the same lines:
   — good for framing the whole toolbox in one sentence before diving into modules.
 - Pages build lazily on first visit, so the very first click into each tab may take a beat
   longer than switching back to an already-visited one — that's expected, not a bug.
+
+## Guided UX
+
+Each module presents an `INPUT → PROCESSING → OUTPUT` workflow. Audio inputs use a
+shared card showing file name, duration, sample rate, channels, and source type, with
+play, replace, and remove actions. Important controls and visualizations expose
+tooltips, and empty or unavailable states are labelled instead of silently failing.
+
+The first-run walkthrough is stored per authenticated user. It appears once for each
+user; it can be replayed from **Settings → Help & Documentation → Get Walkthrough**.
+That help section also documents module workflows, algorithms, equations, and the
+visualizations used by the toolbox.

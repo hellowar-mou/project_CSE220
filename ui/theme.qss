@@ -5,6 +5,101 @@ QWidget {
     color: #33465c;
 }
 
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QScrollArea > QWidget#qt_scrollarea_viewport {
+    background: transparent;
+}
+
+/* Shared slim scrollbar used by every module and recolored with the theme. */
+QScrollBar:vertical {
+    width: 10px;
+    margin: 4px 2px 4px 2px;
+    background: transparent;
+}
+QScrollBar::handle:vertical {
+    min-height: 42px;
+    background: #b8cde2;
+    border-radius: 5px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #6fb1ea;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+    background: transparent;
+}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+QScrollBar:horizontal {
+    height: 10px;
+    margin: 2px 4px;
+    background: transparent;
+}
+QScrollBar::handle:horizontal {
+    min-width: 42px;
+    background: #b8cde2;
+    border-radius: 5px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #6fb1ea;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+    background: transparent;
+}
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
+QStackedWidget {
+    background: transparent;
+}
+
+QWidget#WorkflowPage {
+    background: #f4f9ff;
+    border-radius: 16px;
+}
+
+QPushButton#GuidanceCloseButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0;
+    color: #2f6690;
+    background: rgba(255,255,255,0.82);
+    border: 1px solid #cfe1f2;
+    border-radius: 8px;
+    font-weight: 700;
+}
+QPushButton#GuidanceCloseButton:hover {
+    background: #eaf4ff;
+}
+
+QFrame#AudioInputCard {
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid #d6e2ef;
+    border-radius: 12px;
+}
+
+QFrame#AudioInputCard QLabel#SectionTitle {
+    font-size: 14px;
+}
+
+QFrame#AudioInputCard QLabel#Caption {
+    color: #6b7f96;
+    line-height: 1.2em;
+}
+
 QMainWindow, #centralWidget {
     background: transparent;
 }
@@ -140,18 +235,40 @@ QCheckBox::indicator:checked {
 }
 
 /* ---- buttons ---- */
-QPushButton#PrimaryButton {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #6fb1ea, stop:1 #8fd3c7);
-    color: white;
+QPushButton {
+    min-height: 32px;
+    padding: 7px 14px;
+    color: #2f6690;
+    background: rgba(255,255,255,0.92);
+    background-color: #ffffff;
+    border: 1px solid #cfe1f2;
+    border-radius: 9px;
     font-weight: 600;
-    border: none;
+}
+QPushButton:hover {
+    background: #eaf4ff;
+}
+QPushButton:pressed {
+    background: #d9f0eb;
+}
+QPushButton:disabled {
+    color: #8a9bb0;
+    background: rgba(255,255,255,0.55);
+    border-color: #dbe8f4;
+}
+QPushButton#PrimaryButton {
+    background: #6fb1ea;
+    background-color: #6fb1ea;
+    color: #173f63;
+    font-weight: 600;
+    border: 1px solid #4f96cf;
     border-radius: 10px;
     padding: 9px 18px;
 }
 QPushButton#PrimaryButton:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #5fa3e0, stop:1 #7cc9bc);
+    background: #5fa3e0;
+    background-color: #5fa3e0;
+    color: #123650;
 }
 QPushButton#SecondaryButton {
     background: rgba(255,255,255,0.9);

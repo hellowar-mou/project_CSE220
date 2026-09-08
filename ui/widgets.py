@@ -6,7 +6,11 @@ matplotlib.use("QtAgg")
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
-from PySide6.QtWidgets import QPushButton, QWidget, QHBoxLayout, QLabel, QProgressBar, QSlider
+from PySide6.QtWidgets import (
+    QPushButton, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QProgressBar,
+    QSlider, QCheckBox, QMessageBox, QDialog, QStackedWidget, QDialogButtonBox,
+    QFrame,
+)
 from PySide6.QtCore import QUrl, Signal, Qt, QThread
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
@@ -102,6 +106,7 @@ class MicRecordWidget(QWidget):
 
         self.record_btn = QPushButton("🎙️ Record from Microphone")
         self.record_btn.setObjectName("SecondaryButton")
+        self.record_btn.setToolTip("Record audio from the selected microphone.")
         self.record_btn.clicked.connect(self._toggle)
         layout.addWidget(self.record_btn)
 
@@ -113,6 +118,7 @@ class MicRecordWidget(QWidget):
         self.duration_slider.setRange(1, 15)
         self.duration_slider.setValue(5)
         self.duration_slider.setFixedWidth(100)
+        self.duration_slider.setToolTip("Choose the microphone recording duration in seconds.")
         self.duration_value = QLabel("5s")
         self.duration_value.setObjectName("Caption")
         self.duration_slider.valueChanged.connect(
@@ -126,6 +132,7 @@ class MicRecordWidget(QWidget):
         self.vu_meter.setFixedWidth(90)
         self.vu_meter.setFixedHeight(14)
         self.vu_meter.setTextVisible(False)
+        self.vu_meter.setVisible(False)
         layout.addWidget(self.vu_meter)
         layout.addStretch()
 
@@ -139,6 +146,7 @@ class MicRecordWidget(QWidget):
             self._recording = True
             self.record_btn.setText("⏹️ Stop Recording")
             self.vu_meter.setValue(0)
+            self.vu_meter.setVisible(True)
             self._thread = MicRecorderThread(
                 duration=self.duration_slider.value(), fs=dsp.FS, parent=self)
             self._thread.level_update.connect(self._on_level)
@@ -152,6 +160,7 @@ class MicRecordWidget(QWidget):
         self._recording = False
         self.record_btn.setText("🎙️ Record from Microphone")
         self.vu_meter.setValue(0)
+        self.vu_meter.setVisible(False)
         if len(audio) > 1:
             self.recording_ready.emit(audio, fs)
 
@@ -200,9 +209,11 @@ class MplCanvas(FigureCanvasQTAgg):
         super().__init__(self.fig)
         self.setParent(parent)
         self.setStyleSheet("background: transparent;")
+        self.setToolTip("Waveform view: amplitude over time. Use the controls below to zoom.")
         self._playhead_axes = []   # time-domain axes eligible for a playhead
         self._playhead_duration_s = 0
         self._playhead_lines = []
+        self._waveform_view = None
 
         from ui import theme as theme_module
         theme_module.register_canvas(self)
@@ -212,21 +223,59 @@ class MplCanvas(FigureCanvasQTAgg):
     def plot_waveforms(self, signals_labels, title, fs=dsp.FS, xlim=None):
         self.fig.clear()
         n = len(signals_labels)
-        axes = self.fig.subplots(n, 1, sharex=True)
-        if n == 1:
-            axes = [axes]
+        compare_axes = n > 1
+        axes = self.fig.subplots(n + int(compare_axes), 1, sharex=True)
+        axes = list(np.atleast_1d(axes))
+        comparison_ax = axes[-1] if compare_axes else None
+        input_color = "#f97316"
+        output_color = "#06b6d4"
+        line_colors = []
         for ax, (x, lab) in zip(axes, signals_labels):
-            import numpy as np
-            ts = np.arange(len(x)) / fs
-            ax.plot(ts, x, linewidth=0.8, color="#2f6690")
+            if ax is comparison_ax:
+                break
+            values = np.asarray(x)
+            # Plot a bounded number of points so long recordings remain
+            # readable while the axis still represents the complete signal.
+            max_points = 8000
+            if len(values) > max_points:
+                indices = np.linspace(0, len(values) - 1, max_points).astype(int)
+                values = values[indices]
+                ts = indices / fs
+            else:
+                ts = np.arange(len(values)) / fs
+            color = input_color if len(line_colors) == 0 else output_color
+            line_colors.append((ts, values, lab, color))
+            ax.plot(ts, values, linewidth=0.9, color=color)
+            ax.axhline(0, color="#8395ac", linewidth=0.6, alpha=0.7)
             ax.set_ylabel(lab, fontsize=8)
             ax.grid(alpha=0.25)
             if xlim:
                 ax.set_xlim(xlim)
             ax.tick_params(labelsize=7)
+        if comparison_ax is not None:
+            for ts, values, lab, color in line_colors:
+                comparison_ax.plot(
+                    ts, values, linewidth=1.0, color=color, alpha=0.95,
+                    label=lab, zorder=3,
+                )
+            comparison_ax.axhline(0, color="#8395ac", linewidth=0.6, alpha=0.7)
+            comparison_ax.set_ylabel("Overlay", fontsize=8)
+            comparison_ax.set_title(
+                "Input / Output Overlay (live preview)",
+                fontsize=8,
+                pad=2,
+            )
+            comparison_ax.legend(fontsize=7, loc="upper right", framealpha=0.85)
+            comparison_ax.grid(alpha=0.25)
+            comparison_ax.tick_params(labelsize=7)
         axes[-1].set_xlabel("Time (s)", fontsize=8)
         self.fig.suptitle(title, fontsize=10)
         self.fig.tight_layout()
+        self.setMinimumHeight(max(240, 150 * len(axes)))
+        self._waveform_view = {
+            "duration_s": max((len(x) for x, _ in signals_labels), default=0) / fs,
+            "xlim": xlim,
+        }
 
         # Remember these axes are time-domain, so a playback position marker
         # can be drawn on them later via update_playhead().
@@ -239,6 +288,27 @@ class MplCanvas(FigureCanvasQTAgg):
         theme_module.recolor_figure(self.fig, theme_module.get_current_mode())
         self.draw()
 
+    def zoom_waveform(self, factor):
+        """Zoom the time axis while retaining a meaningful centered view."""
+        if not self._waveform_view or not self._playhead_axes:
+            return
+        duration = self._waveform_view["duration_s"]
+        current = self._playhead_axes[0].get_xlim()
+        center = (current[0] + current[1]) / 2
+        width = max(duration / 1000, (current[1] - current[0]) * factor)
+        left = max(0.0, min(duration - width, center - width / 2))
+        right = min(duration, left + width)
+        for ax in self._playhead_axes:
+            ax.set_xlim(left, right)
+        self.draw_idle()
+
+    def fit_waveform(self):
+        if not self._waveform_view:
+            return
+        duration = self._waveform_view["duration_s"]
+        for ax in self._playhead_axes:
+            ax.set_xlim(0, duration)
+        self.draw_idle()
     def update_playhead(self, fraction):
         """Draw/move a vertical line at `fraction` (0-1) of playback across
         the axes from the most recent plot_waveforms() call. Called from a
@@ -293,8 +363,222 @@ class MplCanvas(FigureCanvasQTAgg):
         theme_module.recolor_figure(self.fig, theme_module.get_current_mode())
 
 
+class WaveformControls(QWidget):
+    """Small reusable view controls for time-domain canvases."""
+
+    def __init__(self, canvas, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        for label, factor, tooltip in (
+            ("Zoom −", 1.8, "Show more of the waveform."),
+            ("Zoom +", 0.55, "Zoom in to inspect waveform detail."),
+        ):
+            button = QPushButton(label)
+            button.setObjectName("SecondaryButton")
+            button.setToolTip(tooltip)
+            button.clicked.connect(lambda checked=False, f=factor: canvas.zoom_waveform(f))
+            layout.addWidget(button)
+        fit = QPushButton("Fit")
+        fit.setObjectName("SecondaryButton")
+        fit.setToolTip("Fit the complete audio signal in the waveform.")
+        fit.clicked.connect(canvas.fit_waveform)
+        layout.addWidget(fit)
+        reset = QPushButton("Reset View")
+        reset.setObjectName("SecondaryButton")
+        reset.setToolTip("Return to the complete-signal overview.")
+        reset.clicked.connect(canvas.fit_waveform)
+        layout.addWidget(reset)
+        layout.addStretch()
+
+
+def show_module_help(parent, title, steps):
+    """Display concise in-app help without sending users to documentation."""
+    QMessageBox.information(parent, title, "\n".join(steps))
+
+
+class GuidanceBubble(QWidget):
+    """Reusable first-visit guide with session close and persistent dismissal."""
+
+    def __init__(self, key, message, parent=None):
+        super().__init__(parent)
+        from ui import theme as theme_module
+        self._key = key
+        self._theme_module = theme_module
+        self.setObjectName("GuidanceBubble")
+        self.setStyleSheet(
+            "QWidget#GuidanceBubble { background: #eef7ff; border: 1px solid #b8d8f2; "
+            "border-radius: 12px; }")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 8, 8)
+        layout.setSpacing(8)
+        icon = QLabel("💡")
+        layout.addWidget(icon)
+        text = QLabel(f"<b>Start here</b><br>{message}")
+        text.setWordWrap(True)
+        text.setObjectName("Caption")
+        layout.addWidget(text, 1)
+
+        self.dont_show = QCheckBox("Don't show again")
+        self.dont_show.setToolTip("Hide this guide on future visits.")
+        layout.addWidget(self.dont_show)
+        close_btn = QPushButton("×")
+        close_btn.setObjectName("GuidanceCloseButton")
+        close_btn.setFixedSize(28, 28)
+        close_btn.setToolTip("Close this guide for now.")
+        close_btn.clicked.connect(self._close)
+        layout.addWidget(close_btn)
+
+        if theme_module.is_guidance_dismissed(key):
+            self.hide()
+
+    def _close(self):
+        if self.dont_show.isChecked():
+            self._theme_module.set_guidance_dismissed(self._key)
+        self.hide()
+
+
+ModuleGuide = GuidanceBubble
+
+
+class FirstRunWalkthrough(QDialog):
+    """One-time in-app orientation for users opening the toolbox for the first time."""
+
+    def __init__(self, user_key="default", parent=None):
+        super().__init__(parent)
+        self._user_key = user_key
+        self.setWindowTitle("Welcome to Audio Signals Toolbox")
+        self.setMinimumWidth(560)
+        self._pages = [
+            ("Welcome",
+             "Explore five practical audio tools built on convolution, FFT, "
+             "correlation, and LTI systems."),
+            ("Choose an input",
+             "Upload a file, record from your microphone, or use a built-in demo "
+             "where available. The current audio is shown in an input card."),
+            ("Process and inspect",
+             "Adjust controls, run the module action, and follow the waveform, "
+             "spectrum, or intermediate processing visualizations."),
+            ("Review and save",
+             "Compare original and processed audio, inspect scores or decoded text, "
+             "then download the result when it is ready."),
+        ]
+        root = QVBoxLayout(self)
+        self.stack = QStackedWidget()
+        for title, text in self._pages:
+            page = QFrame()
+            layout = QVBoxLayout(page)
+            heading = QLabel(title)
+            heading.setObjectName("TitleLabel")
+            body = QLabel(text)
+            body.setObjectName("Caption")
+            body.setWordWrap(True)
+            layout.addWidget(heading)
+            layout.addWidget(body)
+            layout.addStretch()
+            self.stack.addWidget(page)
+        root.addWidget(self.stack)
+
+        self.page_label = QLabel()
+        self.page_label.setObjectName("Caption")
+        root.addWidget(self.page_label)
+        buttons = QDialogButtonBox()
+        self.back_btn = buttons.addButton("Back", QDialogButtonBox.ButtonRole.ActionRole)
+        self.next_btn = buttons.addButton("Next", QDialogButtonBox.ButtonRole.ActionRole)
+        self.skip_btn = buttons.addButton("Skip", QDialogButtonBox.ButtonRole.DestructiveRole)
+        self.finish_btn = buttons.addButton("Finish", QDialogButtonBox.ButtonRole.AcceptRole)
+        self.back_btn.clicked.connect(self._back)
+        self.next_btn.clicked.connect(self._next)
+        self.skip_btn.clicked.connect(self._finish)
+        self.finish_btn.clicked.connect(self._finish)
+        root.addWidget(buttons)
+        self._update_controls()
+
+    def _update_controls(self):
+        index = self.stack.currentIndex()
+        self.page_label.setText(f"Step {index + 1} of {len(self._pages)}")
+        self.back_btn.setEnabled(index > 0)
+        self.next_btn.setVisible(index < len(self._pages) - 1)
+        self.finish_btn.setVisible(index == len(self._pages) - 1)
+
+    def _back(self):
+        self.stack.setCurrentIndex(max(0, self.stack.currentIndex() - 1))
+        self._update_controls()
+
+    def _next(self):
+        self.stack.setCurrentIndex(min(len(self._pages) - 1, self.stack.currentIndex() + 1))
+        self._update_controls()
+
+    def _finish(self):
+        from ui import theme as theme_module
+        theme_module.set_walkthrough_completed(self._user_key)
+        self.accept()
+
+
+class AudioInputCard(QFrame):
+    """Reusable metadata card for the currently selected audio input."""
+
+    replace_requested = Signal()
+    remove_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("AudioInputCard")
+        self.setMinimumHeight(118)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+        title = QLabel("Input Audio")
+        title.setObjectName("SectionTitle")
+        layout.addWidget(title)
+        self.details = QLabel("No audio loaded. Upload, record, or choose a demo to begin.")
+        self.details.setObjectName("Caption")
+        self.details.setWordWrap(True)
+        layout.addWidget(self.details)
+        self.transport = AudioTransportWidget()
+        self.transport.setMinimumHeight(34)
+        # Playback is presented below the module waveform. Keeping the
+        # transport here would duplicate the same controls in the metadata
+        # card and make the input area visually noisy.
+        self.transport.setVisible(False)
+        buttons = QHBoxLayout()
+        self.replace_btn = QPushButton("Replace")
+        self.replace_btn.setObjectName("SecondaryButton")
+        self.replace_btn.setToolTip("Choose a different audio input.")
+        self.replace_btn.clicked.connect(self.replace_requested)
+        self.remove_btn = QPushButton("Remove")
+        self.remove_btn.setObjectName("SecondaryButton")
+        self.remove_btn.setToolTip("Clear the current audio input.")
+        self.remove_btn.clicked.connect(self.remove_requested)
+        buttons.addWidget(self.replace_btn)
+        buttons.addWidget(self.remove_btn)
+        buttons.addStretch()
+        layout.addLayout(buttons)
+        self.replace_btn.setMinimumHeight(32)
+        self.remove_btn.setMinimumHeight(32)
+        self.set_audio(None)
+
+    def set_audio(self, audio, sample_rate=None, filename="—", source="—", channels=1):
+        if audio is None or len(audio) == 0:
+            self.details.setText("No audio loaded. Upload, record, or choose a demo to begin.")
+            self.transport.clear()
+            self.replace_btn.setEnabled(True)
+            self.remove_btn.setEnabled(False)
+            return
+        duration = len(audio) / float(sample_rate)
+        channel_text = "Mono" if channels == 1 else f"{channels} channels"
+        self.details.setText(
+            f"<b>File:</b> {filename}  |  <b>Duration:</b> {duration:.2f}s  |  "
+            f"<b>Sample rate:</b> {sample_rate / 1000:.1f} kHz  |  "
+            f"<b>Channels:</b> {channel_text}  |  <b>Source:</b> {source}")
+        self.transport.set_audio(audio, sample_rate)
+        self.remove_btn.setEnabled(True)
+
+
 class AudioPlayButton(QWidget):
-    """A play button + caption that plays a generated waveform via QtMultimedia.
+    """A compact Play/Pause/Stop control for a generated waveform.
 
     Emits `position_changed(fraction)` (0.0-1.0) while playing and
     `playback_active_changed(bool)` on start/stop, so a page can draw a live
@@ -315,6 +599,16 @@ class AudioPlayButton(QWidget):
         self.button.setObjectName("PlayButton")
         self.button.clicked.connect(self._play)
         layout.addWidget(self.button)
+        self.pause_button = QPushButton("⏸ Pause")
+        self.pause_button.setObjectName("PlayButton")
+        self.pause_button.setToolTip("Pause this waveform.")
+        self.pause_button.clicked.connect(self._pause)
+        layout.addWidget(self.pause_button)
+        self.stop_button = QPushButton("⏹ Stop")
+        self.stop_button.setObjectName("PlayButton")
+        self.stop_button.setToolTip("Stop playback and return to the beginning.")
+        self.stop_button.clicked.connect(self._stop)
+        layout.addWidget(self.stop_button)
         if caption:
             lab = QLabel(caption)
             lab.setObjectName("Caption")
@@ -330,6 +624,7 @@ class AudioPlayButton(QWidget):
         self._player.durationChanged.connect(self._on_duration_changed)
         self._player.positionChanged.connect(self._on_position_changed)
         self._player.playbackStateChanged.connect(self._on_state_changed)
+        self._set_controls_enabled(False)
 
     def set_audio(self, x, fs=dsp.FS):
         wav_bytes = dsp.to_wav_bytes(x, fs)
@@ -338,11 +633,23 @@ class AudioPlayButton(QWidget):
         f.close()
         self._path = f.name
         AudioPlayButton._tempfiles.append(f.name)
+        self._player.setSource(QUrl.fromLocalFile(self._path))
+        self._set_controls_enabled(True)
 
     def _play(self):
         if self._path and os.path.exists(self._path):
-            self._player.setSource(QUrl.fromLocalFile(self._path))
             self._player.play()
+
+    def _pause(self):
+        self._player.pause()
+
+    def _stop(self):
+        self._player.stop()
+        self._player.setPosition(0)
+
+    def _set_controls_enabled(self, enabled):
+        for button in (self.button, self.pause_button, self.stop_button):
+            button.setEnabled(enabled)
 
     def _on_duration_changed(self, duration_ms):
         self._duration_ms = duration_ms
@@ -381,6 +688,10 @@ class AudioTransportWidget(QWidget):
         self.pause_btn = QPushButton("⏸ Pause")
         self.stop_btn = QPushButton("⏹ Stop")
         self.replay_btn = QPushButton("⟲ Replay")
+        self.play_btn.setToolTip("Play this audio.")
+        self.pause_btn.setToolTip("Pause playback.")
+        self.stop_btn.setToolTip("Stop playback and return to the beginning.")
+        self.replay_btn.setToolTip("Replay from the beginning.")
         for b in (self.play_btn, self.pause_btn, self.stop_btn, self.replay_btn):
             b.setObjectName("PlayButton")
             layout.addWidget(b)

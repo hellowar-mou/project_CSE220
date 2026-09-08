@@ -15,12 +15,13 @@ import numpy as np
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QFrame,
     QPushButton, QFileDialog, QTabWidget, QListWidget, QListWidgetItem,
-    QScrollArea, QSizePolicy, QSpacerItem,
+    QSizePolicy, QSpacerItem,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 
 import dsp_core as dsp
-from ui.widgets import MplCanvas, AudioPlayButton
+from ui.widgets import MplCanvas, AudioPlayButton, ModuleGuide, AudioInputCard
+from ui.pages.noise_remover_page import SongCard
 
 # Path to the project's built-in audio library
 AUDIOS_DIR = os.path.normpath(
@@ -40,70 +41,6 @@ def _card_frame(bg_alpha=0.82, radius=14):
     return frame
 
 
-# ---------------------------------------------------------------------------
-#  Clickable song card for the library row
-# ---------------------------------------------------------------------------
-
-class _SongCard(QFrame):
-    clicked = Signal(str)
-
-    def __init__(self, file_path, parent=None):
-        super().__init__(parent)
-        self.path = file_path
-        self._selected = False
-        self._base_style = (
-            "QFrame { background: rgba(255,255,255,0.88);"
-            " border-radius: 12px; border: 1.5px solid #d6e2ef; }"
-            "QFrame:hover { background: #eaf4ff; border: 1.5px solid #6fb1ea; }"
-        )
-        self._sel_style = (
-            "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
-            " stop:0 #6fb1ea, stop:1 #8fd3c7);"
-            " border-radius: 12px; border: none; }"
-        )
-        self.setStyleSheet(self._base_style)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(64)
-        self.setMinimumWidth(170)
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 6, 10, 6)
-        lay.setSpacing(2)
-
-        name = os.path.splitext(os.path.basename(file_path))[0]
-        self._title = QLabel(f"🎵  {name}")
-        self._title.setStyleSheet("font-weight:600; font-size:11px; color:#2f3e50;")
-        self._title.setWordWrap(True)
-
-        ext = os.path.splitext(file_path)[1].upper().lstrip(".")
-        try:
-            size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            info_text = f"{ext} • {size_mb:.1f} MB"
-        except OSError:
-            info_text = ext
-        self._info = QLabel(info_text)
-        self._info.setStyleSheet("font-size:10px; color:#6b7f96;")
-
-        lay.addWidget(self._title)
-        lay.addWidget(self._info)
-
-    def set_selected(self, sel):
-        self._selected = sel
-        if sel:
-            self.setStyleSheet(self._sel_style)
-            self._title.setStyleSheet("font-weight:700; font-size:11px; color:white;")
-            self._info.setStyleSheet("font-size:10px; color:rgba(255,255,255,0.85);")
-        else:
-            self.setStyleSheet(self._base_style)
-            self._title.setStyleSheet("font-weight:600; font-size:11px; color:#2f3e50;")
-            self._info.setStyleSheet("font-size:10px; color:#6b7f96;")
-
-    def mousePressEvent(self, ev):
-        self.clicked.emit(self.path)
-        super().mousePressEvent(ev)
-
-
 # ===================================================================
 #  Main Editor Page
 # ===================================================================
@@ -121,10 +58,12 @@ class EditorPage(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.setObjectName("WorkflowPage")
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.source_audio = None
         self.processed_audio = None
         self.join_items = []           # list of (name, np.ndarray)
-        self._library_cards = []       # _SongCard references
+        self._library_cards = []       # shared Noise Remover SongCard references
         self._current_lib_path = None  # which library song is selected
         self._build_ui()
         self._scan_library()
@@ -138,70 +77,94 @@ class EditorPage(QWidget):
         root = QVBoxLayout(self)
         root.setSpacing(10)
 
-        # ---- scrollable content ----
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{background:transparent; border:none;}")
         container = QWidget()
         container.setStyleSheet("background:transparent;")
         self.layout_inner = QVBoxLayout(container)
         self.layout_inner.setSpacing(10)
-        scroll.setWidget(container)
-        root.addWidget(scroll)
+        root.addWidget(container)
 
         lay = self.layout_inner
 
         # ===== HEADER CARD =====
-        hdr = _card_frame()
+        hdr = QFrame()
+        hdr.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(111,177,234,0.15), stop:1 rgba(143,211,199,0.15));
+                border-radius: 16px;
+                border: 1px solid rgba(111,177,234,0.2);
+            }
+        """)
         hdr_l = QVBoxLayout(hdr)
+        hdr_l.setContentsMargins(20, 16, 20, 16)
+        hdr_l.setSpacing(4)
         title = QLabel("✂️  Audio Editor")
-        title.setObjectName("TitleLabel")
+        title.setStyleSheet(
+            "font-size: 20px; font-weight: 700; color: #2f3e50; "
+            "background: transparent; border: none;"
+        )
         sub = QLabel(
             "Load a song from your library or upload your own  •  "
             "Trim & Join · Reverse · Time-scale · Fade · Convolution Effects"
         )
-        sub.setObjectName("Caption")
+        sub.setStyleSheet(
+            "font-size: 11px; color: #6b7f96; "
+            "background: transparent; border: none;"
+        )
         sub.setWordWrap(True)
         hdr_l.addWidget(title)
         hdr_l.addWidget(sub)
         lay.addWidget(hdr)
+        lay.addWidget(ModuleGuide(
+            "editor",
+            "Choose a library clip or upload audio, then select an editing tool "
+            "below. Preview the result before downloading it."))
 
         # ===== AUDIO LIBRARY CARD =====
-        lib_card = _card_frame(bg_alpha=0.72)
+        lib_card = QFrame()
+        lib_card.setStyleSheet("""
+            QFrame {
+                background: rgba(255,255,255,0.82);
+                border-radius: 14px;
+                border: 1px solid rgba(255,255,255,0.6);
+            }
+        """)
         lib_lay = QVBoxLayout(lib_card)
-        lib_lay.setSpacing(8)
-        lib_title = QLabel("🎵  Audio Library")
-        lib_title.setObjectName("SectionTitle")
+        lib_lay.setContentsMargins(16, 14, 16, 14)
+        lib_lay.setSpacing(10)
+        lib_title = QLabel("🎵 Audio Library")
+        lib_title.setStyleSheet(
+            "font-size: 14px; font-weight: 700; color: #2f3e50; "
+            "background: transparent; border: none;"
+        )
         lib_lay.addWidget(lib_title)
 
-        # horizontal scrollable row for song cards
-        self.lib_scroll = QScrollArea()
-        self.lib_scroll.setFixedHeight(80)
-        self.lib_scroll.setWidgetResizable(True)
-        self.lib_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.lib_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.lib_scroll.setStyleSheet(
-            "QScrollArea{background:transparent; border:none;}"
+        lib_desc = QLabel(
+            "Select a song to load for editing • Then choose an editing tool below"
         )
-        self.lib_row_widget = QWidget()
-        self.lib_row_widget.setStyleSheet("background:transparent;")
-        self.lib_row_layout = QHBoxLayout(self.lib_row_widget)
-        self.lib_row_layout.setContentsMargins(0, 0, 0, 0)
-        self.lib_row_layout.setSpacing(10)
-        self.lib_row_layout.addStretch()
-        self.lib_scroll.setWidget(self.lib_row_widget)
-        lib_lay.addWidget(self.lib_scroll)
+        lib_desc.setStyleSheet(
+            "font-size: 11px; color: #6b7f96; "
+            "background: transparent; border: none;"
+        )
+        lib_desc.setWordWrap(True)
+        lib_lay.addWidget(lib_desc)
+
+        self.lib_row_layout = QHBoxLayout()
+        self.lib_row_layout.setSpacing(12)
+        lib_lay.addLayout(self.lib_row_layout)
 
         # upload + demo buttons
         btn_row = QHBoxLayout()
         self.upload_btn = QPushButton("📁  Upload Audio File")
         self.upload_btn.setObjectName("PrimaryButton")
         self.upload_btn.clicked.connect(self._on_upload)
+        self.upload_btn.setToolTip("Choose an audio file to edit.")
         btn_row.addWidget(self.upload_btn)
 
         self.demo_btn = QPushButton("🔊  Demo Signal")
         self.demo_btn.setObjectName("SecondaryButton")
         self.demo_btn.clicked.connect(self._load_demo_signal)
+        self.demo_btn.setToolTip("Load a built-in synthetic demo signal.")
         btn_row.addWidget(self.demo_btn)
         btn_row.addStretch()
         lib_lay.addLayout(btn_row)
@@ -211,6 +174,14 @@ class EditorPage(QWidget):
         self.file_label.setWordWrap(True)
         lib_lay.addWidget(self.file_label)
         lay.addWidget(lib_card)
+        workflow = QLabel("INPUT  →  PROCESSING  →  OUTPUT")
+        workflow.setObjectName("HintLabel")
+        workflow.setToolTip("Choose audio, apply an editing operation, then preview or save the result.")
+        lay.addWidget(workflow)
+        self.input_audio_card = AudioInputCard()
+        self.input_audio_card.replace_requested.connect(self._on_upload)
+        self.input_audio_card.remove_requested.connect(self._remove_audio_input)
+        lay.addWidget(self.input_audio_card)
 
         # ===== EFFECT TABS =====
         self.tabs = QTabWidget()
@@ -562,24 +533,23 @@ class EditorPage(QWidget):
     # ---------------------------------------------------------------
 
     def _scan_library(self):
-        if not os.path.isdir(AUDIOS_DIR):
-            return
-        exts = (".wav", ".mp3", ".flac", ".ogg")
-        files = sorted(
-            f for f in os.listdir(AUDIOS_DIR)
-            if os.path.splitext(f)[1].lower() in exts
-        )
-        # Remove the trailing stretch first
-        stretch = self.lib_row_layout.takeAt(self.lib_row_layout.count() - 1)
+        sample_songs = [
+            ("photograph", "Photograph", "Ed Sheeran", "📸",
+             os.path.join(AUDIOS_DIR, "Ed Sheeran - Photograph.mp3")),
+            ("thousand_years", "A Thousand Years", "Christina Perri", "💫",
+             os.path.join(AUDIOS_DIR, "Cristina Perry - A Thousand Years.mp3")),
+            ("memories", "Memories", "Maroon 5", "🎶",
+             os.path.join(AUDIOS_DIR, "Maroon 5 - Memories.mp3")),
+        ]
 
-        for fname in files:
-            path = os.path.join(AUDIOS_DIR, fname)
-            card = _SongCard(path)
-            card.clicked.connect(self._on_library_song)
+        for key, title, artist, icon, path in sample_songs:
+            card = SongCard(key, title, artist, icon, path)
+            card.clicked.connect(
+                lambda _song_key, file_path: self._on_library_song(file_path)
+            )
             self._library_cards.append(card)
             self.lib_row_layout.addWidget(card)
 
-        # Re-add stretch
         self.lib_row_layout.addStretch()
 
     def _on_library_song(self, path):
@@ -589,12 +559,13 @@ class EditorPage(QWidget):
             self._current_lib_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             dur = len(audio) / dsp.FS
+            self.input_audio_card.set_audio(audio, dsp.FS, name, "Built-in Library", channels=1)
             self.file_label.setText(
                 f"✅  {name}   ({orig_fs} Hz → {dsp.FS} Hz,  {dur:.1f} s)"
             )
             # highlight card
             for c in self._library_cards:
-                c.set_selected(c.path == path)
+                c.set_selected(c.file_path == path)
             self._update_trim_range()
             self._refresh()
         except Exception as e:
@@ -616,6 +587,7 @@ class EditorPage(QWidget):
             audio, orig_fs = dsp.load_audio_file(path, target_fs=dsp.FS)
             self.source_audio = audio
             self._current_lib_path = None
+            self.input_audio_card.set_audio(audio, dsp.FS, os.path.basename(path), "Uploaded File", channels=1)
             for c in self._library_cards:
                 c.set_selected(False)
             name = os.path.basename(path)
@@ -631,12 +603,21 @@ class EditorPage(QWidget):
     def _load_demo_signal(self):
         self.source_audio = dsp.make_voice_like()
         self._current_lib_path = None
+        self.input_audio_card.set_audio(
+            self.source_audio, dsp.FS, "Synthetic demo signal", "Built-in Demo", channels=1)
         for c in self._library_cards:
             c.set_selected(False)
         dur = len(self.source_audio) / dsp.FS
         self.file_label.setText(f"🔊  Demo signal — synthetic voice-like tone  ({dur:.1f} s)")
         self._update_trim_range()
         self._refresh()
+
+    def _remove_audio_input(self):
+        self.source_audio = None
+        self.processed_audio = None
+        self._current_lib_path = None
+        self.input_audio_card.set_audio(None)
+        self.file_label.setText("No audio loaded")
 
     # ---------------------------------------------------------------
     #  Trim helpers

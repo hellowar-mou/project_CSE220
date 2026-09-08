@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal, QTimer, QThread, QPropertyAnimation, QEas
 from PySide6.QtGui import QFont, QColor, QPalette
 
 import dsp_core as dsp
-from ui.widgets import MplCanvas, AudioPlayButton
+from ui.widgets import MplCanvas, AudioPlayButton, ModuleGuide
 
 
 # ─────────────────────────────────────────── Smooth Scroll Area
@@ -243,7 +243,7 @@ class NoiseRemoverPage(QWidget):
         h_layout.setContentsMargins(20, 16, 20, 16)
 
         title_col = QVBoxLayout()
-        title = QLabel("🧹 Professional Noise Remover")
+        title = QLabel("🧹 Noise Remover")
         title.setStyleSheet("font-size: 20px; font-weight: 700; color: #2f3e50; background: transparent; border: none;")
         caption = QLabel("Upload audio files or record from microphone • Apply multiple DSP denoising algorithms • Compare results in real-time")
         caption.setStyleSheet("font-size: 11px; color: #6b7f96; background: transparent; border: none;")
@@ -256,6 +256,14 @@ class NoiseRemoverPage(QWidget):
         h_layout.addWidget(self.status_pill)
 
         main_layout.addWidget(header)
+        workflow = QLabel("INPUT  →  PROCESSING  →  OUTPUT")
+        workflow.setObjectName("HintLabel")
+        workflow.setToolTip("Load audio, configure denoising, then compare or export the result.")
+        main_layout.addWidget(workflow)
+        main_layout.addWidget(ModuleGuide(
+            "noise_remover",
+            "Upload audio, record from your microphone, or choose a demo. "
+            "Select a denoising method, adjust its controls, and compare the output."))
 
         # ─── Input Section: Upload / Record / Demo
         input_card = QFrame()
@@ -281,6 +289,7 @@ class NoiseRemoverPage(QWidget):
         self.upload_btn.setMinimumHeight(40)
         self.upload_btn.setCursor(Qt.PointingHandCursor)
         self.upload_btn.clicked.connect(self._on_upload)
+        self.upload_btn.setToolTip("Choose an audio file to denoise.")
         file_row.addWidget(self.upload_btn)
 
         self.file_label = QLabel("No file selected")
@@ -300,6 +309,7 @@ class NoiseRemoverPage(QWidget):
         self.record_btn.setMinimumHeight(40)
         self.record_btn.setCursor(Qt.PointingHandCursor)
         self.record_btn.clicked.connect(self._on_record_toggle)
+        self.record_btn.setToolTip("Record an audio sample from your microphone.")
         mic_row.addWidget(self.record_btn)
 
         self.rec_duration_label = QLabel("Duration:")
@@ -310,6 +320,7 @@ class NoiseRemoverPage(QWidget):
         self.rec_duration_slider.setRange(1, 15)
         self.rec_duration_slider.setValue(5)
         self.rec_duration_slider.setFixedWidth(120)
+        self.rec_duration_slider.setToolTip("Choose the microphone recording duration.")
         self.rec_duration_slider.valueChanged.connect(
             lambda v: self.rec_duration_val.setText(f"{v}s"))
         mic_row.addWidget(self.rec_duration_slider)
@@ -347,10 +358,15 @@ class NoiseRemoverPage(QWidget):
         self.demo_btn.setMinimumHeight(40)
         self.demo_btn.setCursor(Qt.PointingHandCursor)
         self.demo_btn.clicked.connect(self._load_demo_signal)
+        self.demo_btn.setToolTip("Load a built-in noisy demo signal.")
         mic_row.addWidget(self.demo_btn)
 
         input_layout.addLayout(mic_row)
         main_layout.addWidget(input_card)
+        self.input_audio_card = AudioInputCard()
+        self.input_audio_card.replace_requested.connect(self._on_upload)
+        self.input_audio_card.remove_requested.connect(self._remove_audio_input)
+        main_layout.addWidget(self.input_audio_card)
 
         # ─── Denoising Controls Card
         controls_card = QFrame()
@@ -408,6 +424,7 @@ class NoiseRemoverPage(QWidget):
             }
         """)
         self.algo_combo.currentIndexChanged.connect(self._on_algo_changed)
+        self.algo_combo.setToolTip("Choose the denoising algorithm applied to the input.")
         algo_row.addWidget(self.algo_combo)
         algo_row.addStretch()
         controls_layout.addLayout(algo_row)
@@ -481,6 +498,7 @@ class NoiseRemoverPage(QWidget):
             }
         """)
         self.apply_btn.clicked.connect(self._on_apply)
+        self.apply_btn.setToolTip("Run the selected denoising method on the current input.")
         apply_row.addWidget(self.apply_btn)
         apply_row.addStretch()
         controls_layout.addLayout(apply_row)
@@ -599,6 +617,7 @@ class NoiseRemoverPage(QWidget):
         self.export_btn.setMinimumHeight(36)
         self.export_btn.setCursor(Qt.PointingHandCursor)
         self.export_btn.clicked.connect(self._on_export)
+        self.export_btn.setToolTip("Save the denoised output as a WAV file.")
         self.export_btn.setEnabled(False)
         players.addWidget(self.export_btn)
 
@@ -999,7 +1018,7 @@ from PySide6.QtCore import Qt, Signal, QTimer, QThread, QPropertyAnimation, QEas
 from PySide6.QtGui import QFont, QColor, QPalette
 
 import dsp_core as dsp
-from ui.widgets import MplCanvas, AudioPlayButton
+from ui.widgets import MplCanvas, AudioPlayButton, AudioInputCard
 
 
 # ─────────────────────────────────────────── Smooth Scroll Area
@@ -1294,19 +1313,11 @@ class NoiseRemoverPage(QWidget):
     #  UI Construction
     # ────────────────────────────────────────────────────────────────
     def _build_ui(self):
-        # Main scrollable layout
-        scroll = SmoothScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll_content = QWidget()
-        scroll_content.setStyleSheet("background: transparent;")
-        main_layout = QVBoxLayout(scroll_content)
+        # The main window provides the shared smooth scroll area for every
+        # module. Keeping page content direct avoids a second scrollbar.
+        main_layout = QVBoxLayout(self)
         main_layout.setSpacing(16)
         main_layout.setContentsMargins(4, 4, 4, 4)
-
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(scroll)
-        scroll.setWidget(scroll_content)
 
         # ═══════════════════ Header Card ═══════════════════
         header = QFrame()
@@ -1322,7 +1333,7 @@ class NoiseRemoverPage(QWidget):
         h_layout.setContentsMargins(20, 16, 20, 16)
 
         title_col = QVBoxLayout()
-        title = QLabel("🧹 Professional Noise Remover")
+        title = QLabel("🧹 Noise Remover")
         title.setStyleSheet("font-size: 20px; font-weight: 700; color: #2f3e50; background: transparent; border: none;")
         caption = QLabel("Load sample songs → Add noise → Apply denoising → Compare results in real-time")
         caption.setStyleSheet("font-size: 11px; color: #6b7f96; background: transparent; border: none;")
@@ -1335,6 +1346,10 @@ class NoiseRemoverPage(QWidget):
         h_layout.addWidget(self.status_pill)
 
         main_layout.addWidget(header)
+        workflow = QLabel("INPUT  →  PROCESSING  →  OUTPUT")
+        workflow.setObjectName("HintLabel")
+        workflow.setToolTip("Load audio, configure denoising, then compare or export the result.")
+        main_layout.addWidget(workflow)
 
         # ═══════════════════ Sample Songs Library ═══════════════════
         songs_card = QFrame()
@@ -1349,7 +1364,7 @@ class NoiseRemoverPage(QWidget):
         songs_layout.setContentsMargins(16, 14, 16, 14)
         songs_layout.setSpacing(10)
 
-        songs_header = QLabel("🎵 Sample Songs Library")
+        songs_header = QLabel("🎵 Audio Library")
         songs_header.setStyleSheet("font-size: 14px; font-weight: 700; color: #2f3e50; background: transparent; border: none;")
         songs_layout.addWidget(songs_header)
 
@@ -1476,6 +1491,10 @@ class NoiseRemoverPage(QWidget):
 
         input_layout.addLayout(mic_row)
         main_layout.addWidget(input_card)
+        self.input_audio_card = AudioInputCard()
+        self.input_audio_card.replace_requested.connect(self._on_upload)
+        self.input_audio_card.remove_requested.connect(self._remove_audio_input)
+        main_layout.addWidget(self.input_audio_card)
 
         # ═══════════════════ Add Noise Section ═══════════════════
         noise_card = QFrame()
@@ -1899,6 +1918,9 @@ class NoiseRemoverPage(QWidget):
             self.audio_data = audio.copy()
             self._clean_ref = audio.copy()
             self.audio_fs = dsp.FS
+            self.input_audio_card.set_audio(
+                audio, dsp.FS, os.path.basename(file_path),
+                "Built-in Library", channels=1)
 
             song_name = os.path.basename(file_path)
             duration = len(audio) / dsp.FS
@@ -1989,6 +2011,17 @@ class NoiseRemoverPage(QWidget):
             "font-size: 11px; color: #27ae60; background: transparent; border: none;")
         self.status_pill.set_status("Clean ✓", "green")
 
+    def _remove_audio_input(self):
+        self.clean_data = None
+        self.audio_data = None
+        self.denoised_data = None
+        self._clean_ref = None
+        self.input_audio_card.set_audio(None)
+        self.file_label.setText("No file selected — choose a sample, upload, or record audio")
+        self.add_noise_btn.setEnabled(False)
+        self.apply_btn.setEnabled(False)
+        self.export_btn.setEnabled(False)
+
     # ────────────────────────────────────────────────────────────────
     #  Audio Input Handlers (Upload / Record / Demo)
     # ────────────────────────────────────────────────────────────────
@@ -2018,6 +2051,8 @@ class NoiseRemoverPage(QWidget):
             self._clean_ref = audio.copy()
             self.audio_fs = dsp.FS
             fname = os.path.basename(path)
+            self.input_audio_card.set_audio(
+                audio, dsp.FS, fname, "Uploaded File", channels=1)
             self.file_label.setText(f"✅ {fname}  ({orig_fs} Hz → {dsp.FS} Hz, {len(audio)/dsp.FS:.2f}s)")
             self.file_label.setStyleSheet("""
                 font-size: 11px; color: #1e8a5f; background: #e8faf1;
@@ -2106,6 +2141,9 @@ class NoiseRemoverPage(QWidget):
             self.audio_data = audio.copy()
             self._clean_ref = audio.copy()
             self.audio_fs = fs
+            self.input_audio_card.set_audio(
+                audio, fs, "Microphone recording",
+                "Microphone Recording", channels=1)
             self.file_label.setText(f"🎙️ Recorded {len(audio)/fs:.2f}s at {fs} Hz")
             self.file_label.setStyleSheet("""
                 font-size: 11px; color: #8e44ad; background: #f5eef8;
@@ -2145,6 +2183,9 @@ class NoiseRemoverPage(QWidget):
         self.audio_data = dsp.make_noisy(clean)
         self._clean_ref = clean
         self.audio_fs = dsp.FS
+        self.input_audio_card.set_audio(
+            self.audio_data, dsp.FS, "Noisy demo signal",
+            "Built-in Demo", channels=1)
         self.file_label.setText("🔊 Demo: Synthetic voice + 60 Hz hum + hiss  (2.0s)")
         self.file_label.setStyleSheet("""
             font-size: 11px; color: #2980b9; background: #ebf5fb;
@@ -2387,22 +2428,27 @@ class NoiseRemoverPage(QWidget):
         axes = self.spectro_canvas.fig.subplots(2, 1, sharex=True)
 
         f_o, t_o, Sxx_o = dsp.compute_spectrogram(original, dsp.FS)
-        axes[0].pcolormesh(t_o, f_o, Sxx_o, shading='gouraud', cmap='magma',
-                           vmin=-80, vmax=0)
-        axes[0].set_ylabel("Freq (Hz)", fontsize=9)
+        original_mesh = axes[0].pcolormesh(
+            t_o, f_o, Sxx_o, shading='gouraud', cmap='magma', vmin=-80, vmax=0)
+        axes[0].set_ylabel("Frequency (Hz)", fontsize=9)
         axes[0].set_ylim(0, min(dsp.FS // 2, 4000))
-        axes[0].set_title("Spectrogram: Noisy vs Denoised", fontsize=11, fontweight='bold')
+        axes[0].set_title("Input / Noisy Signal", fontsize=10, fontweight='bold', pad=4)
         axes[0].tick_params(labelsize=8)
 
         f_d, t_d, Sxx_d = dsp.compute_spectrogram(denoised, dsp.FS)
         axes[1].pcolormesh(t_d, f_d, Sxx_d, shading='gouraud', cmap='magma',
                            vmin=-80, vmax=0)
-        axes[1].set_ylabel("Freq (Hz)", fontsize=9)
+        axes[1].set_ylabel("Frequency (Hz)", fontsize=9)
         axes[1].set_xlabel("Time (s)", fontsize=9)
+        axes[1].set_title("Output / Denoised Signal", fontsize=10, fontweight='bold', pad=4)
         axes[1].set_ylim(0, min(dsp.FS // 2, 4000))
         axes[1].tick_params(labelsize=8)
 
-        self.spectro_canvas.fig.tight_layout()
+        self.spectro_canvas.fig.suptitle(
+            "Spectrogram: Input vs. Output", fontsize=11, fontweight="bold", y=0.995)
+        self.spectro_canvas.fig.colorbar(
+            original_mesh, ax=axes, label="Magnitude (dB)", fraction=0.025, pad=0.02)
+        self.spectro_canvas.fig.tight_layout(rect=(0, 0, 0.96, 0.96))
         self.spectro_canvas.draw()
 
     # ────────────────────────────────────────────────────────────────

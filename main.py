@@ -1,4 +1,6 @@
 import sys
+import logging
+import traceback
 from PySide6.QtWidgets import QApplication
 
 from ui import theme as theme_module
@@ -6,6 +8,26 @@ theme_module.install_theme_patch()  # must happen before any QWidget exists
 
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
+
+
+def _install_crash_logging():
+    logging.basicConfig(
+        filename="app_crash.log",
+        level=logging.ERROR,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logging.critical(
+            "Unhandled application exception",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+        traceback.print_exception(exc_type, exc_value, exc_traceback)
+
+    sys.excepthook = handle_exception
 
 
 class AppController:
@@ -31,7 +53,9 @@ class AppController:
 
 
 def main():
+    _install_crash_logging()
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
 
     # Load the previously chosen theme (defaults to light) before any
     # widget is created, so the very first frame already matches it.

@@ -122,6 +122,7 @@ _LIGHT_TO_DARK = {
     "#cfe1f2": "#2c3b4f",
     "#cdeae4": "#243b4a",
     "#dbe8f4": "#293544",
+    "#b8cde2": "#40546b",
 
     # hover / selection tints
     "#eaf4ff": "#22303f",
@@ -269,7 +270,8 @@ def set_current_mode(mode):
         try:
             cb()
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).exception("Theme listener failed")
 
 
 def load_saved_theme():
@@ -284,8 +286,67 @@ def load_saved_theme():
 
 def save_theme(mode):
     try:
+        data = {}
+        if os.path.exists(SETTINGS_PATH):
+            with open(SETTINGS_PATH) as f:
+                data = json.load(f)
+        data["theme"] = mode
         with open(SETTINGS_PATH, "w") as f:
-            json.dump({"theme": mode}, f)
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def is_guidance_dismissed(key):
+    """Return whether a first-time module guide was permanently dismissed."""
+    try:
+        with open(SETTINGS_PATH) as f:
+            data = json.load(f)
+        return bool(data.get("guidance_dismissed", {}).get(key, False))
+    except Exception:
+        return False
+
+
+def set_guidance_dismissed(key, dismissed=True):
+    """Persist a module guide preference while preserving other app settings."""
+    try:
+        data = {}
+        if os.path.exists(SETTINGS_PATH):
+            with open(SETTINGS_PATH) as f:
+                data = json.load(f)
+        dismissed_map = data.setdefault("guidance_dismissed", {})
+        dismissed_map[key] = bool(dismissed)
+        with open(SETTINGS_PATH, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def is_walkthrough_completed(user_key="default"):
+    try:
+        with open(SETTINGS_PATH) as f:
+            data = json.load(f)
+        completed = data.get("walkthrough_completed", {})
+        if isinstance(completed, bool):
+            return completed if user_key == "default" else False
+        return bool(completed.get(user_key, False))
+    except Exception:
+        return False
+
+
+def set_walkthrough_completed(user_key="default"):
+    data = {}
+    try:
+        if os.path.exists(SETTINGS_PATH):
+            with open(SETTINGS_PATH) as f:
+                data = json.load(f)
+        completed = data.get("walkthrough_completed", {})
+        if not isinstance(completed, dict):
+            completed = {}
+        completed[user_key] = True
+        data["walkthrough_completed"] = completed
+        with open(SETTINGS_PATH, "w") as f:
+            json.dump(data, f)
     except Exception:
         pass
 

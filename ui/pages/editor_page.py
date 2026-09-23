@@ -20,7 +20,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 import dsp_core as dsp
-from ui.widgets import MplCanvas, AudioPlayButton, ModuleGuide, AudioInputCard
+from ui.widgets import (
+    MplCanvas, AudioPlayButton, ModuleGuide, AudioInputCard, MicRecordWidget,
+    add_slider_step_buttons,
+)
 from ui.pages.noise_remover_page import SongCard
 
 # Path to the project's built-in audio library
@@ -104,7 +107,7 @@ class EditorPage(QWidget):
             "background: transparent; border: none;"
         )
         sub = QLabel(
-            "Load a song from your library or upload your own  •  "
+            "Load a song from your library, record from your microphone, or upload your own  •  "
             "Trim & Join · Reverse · Time-scale · Fade · Convolution Effects"
         )
         sub.setStyleSheet(
@@ -160,6 +163,10 @@ class EditorPage(QWidget):
         self.upload_btn.clicked.connect(self._on_upload)
         self.upload_btn.setToolTip("Choose an audio file to edit.")
         btn_row.addWidget(self.upload_btn)
+
+        self.mic_widget = MicRecordWidget()
+        self.mic_widget.recording_ready.connect(self._on_recording_ready)
+        btn_row.addWidget(self.mic_widget)
 
         self.demo_btn = QPushButton("🔊  Demo Signal")
         self.demo_btn.setObjectName("SecondaryButton")
@@ -245,7 +252,10 @@ class EditorPage(QWidget):
         self.trim_start_slider.setValue(0)
         self.trim_start_slider.valueChanged.connect(self._on_trim_changed)
         col1.addWidget(self.trim_start_label)
-        col1.addWidget(self.trim_start_slider)
+        trim_start_controls = QHBoxLayout()
+        trim_start_controls.addWidget(self.trim_start_slider)
+        add_slider_step_buttons(trim_start_controls, self.trim_start_slider)
+        col1.addLayout(trim_start_controls)
         row.addLayout(col1)
 
         col2 = QVBoxLayout()
@@ -256,7 +266,10 @@ class EditorPage(QWidget):
         self.trim_end_slider.setValue(1000)
         self.trim_end_slider.valueChanged.connect(self._on_trim_changed)
         col2.addWidget(self.trim_end_label)
-        col2.addWidget(self.trim_end_slider)
+        trim_end_controls = QHBoxLayout()
+        trim_end_controls.addWidget(self.trim_end_slider)
+        add_slider_step_buttons(trim_end_controls, self.trim_end_slider)
+        col2.addLayout(trim_end_controls)
         row.addLayout(col2)
 
         lay.addLayout(row)
@@ -368,6 +381,7 @@ class EditorPage(QWidget):
         self.speed_slider.setValue(100)        # 1.0x default
         self.speed_slider.valueChanged.connect(self._on_speed_changed)
         row.addWidget(self.speed_slider, 1)
+        add_slider_step_buttons(row, self.speed_slider)
 
         fast_label = QLabel("🐇 4.0×")
         fast_label.setObjectName("Caption")
@@ -411,7 +425,10 @@ class EditorPage(QWidget):
         self.fadein_slider.setValue(0)
         self.fadein_slider.valueChanged.connect(self._on_fade_changed)
         col1.addWidget(self.fadein_label)
-        col1.addWidget(self.fadein_slider)
+        fadein_controls = QHBoxLayout()
+        fadein_controls.addWidget(self.fadein_slider)
+        add_slider_step_buttons(fadein_controls, self.fadein_slider, step=10)
+        col1.addLayout(fadein_controls)
         row.addLayout(col1)
 
         col2 = QVBoxLayout()
@@ -422,7 +439,10 @@ class EditorPage(QWidget):
         self.fadeout_slider.setValue(0)
         self.fadeout_slider.valueChanged.connect(self._on_fade_changed)
         col2.addWidget(self.fadeout_label)
-        col2.addWidget(self.fadeout_slider)
+        fadeout_controls = QHBoxLayout()
+        fadeout_controls.addWidget(self.fadeout_slider)
+        add_slider_step_buttons(fadeout_controls, self.fadeout_slider, step=10)
+        col2.addLayout(fadeout_controls)
         row.addLayout(col2)
 
         lay.addLayout(row)
@@ -474,7 +494,10 @@ class EditorPage(QWidget):
         self.smooth_slider.setValue(50)
         self.smooth_slider.valueChanged.connect(self._on_fx_changed)
         sl.addWidget(self.smooth_label)
-        sl.addWidget(self.smooth_slider)
+        smooth_controls = QHBoxLayout()
+        smooth_controls.addWidget(self.smooth_slider)
+        add_slider_step_buttons(smooth_controls, self.smooth_slider)
+        sl.addLayout(smooth_controls)
         smooth_hint = QLabel(
             "💡 A larger kernel produces stronger smoothing (low-pass filtering). "
             "This convolves the signal with a uniform averaging window."
@@ -498,7 +521,10 @@ class EditorPage(QWidget):
         self.echo_delay_slider.setValue(15)
         self.echo_delay_slider.valueChanged.connect(self._on_fx_changed)
         ecol1.addWidget(self.echo_delay_label)
-        ecol1.addWidget(self.echo_delay_slider)
+        echo_delay_controls = QHBoxLayout()
+        echo_delay_controls.addWidget(self.echo_delay_slider)
+        add_slider_step_buttons(echo_delay_controls, self.echo_delay_slider, step=10)
+        ecol1.addLayout(echo_delay_controls)
         erow.addLayout(ecol1)
 
         ecol2 = QVBoxLayout()
@@ -509,7 +535,10 @@ class EditorPage(QWidget):
         self.echo_decay_slider.setValue(50)
         self.echo_decay_slider.valueChanged.connect(self._on_fx_changed)
         ecol2.addWidget(self.echo_decay_label)
-        ecol2.addWidget(self.echo_decay_slider)
+        echo_decay_controls = QHBoxLayout()
+        echo_decay_controls.addWidget(self.echo_decay_slider)
+        add_slider_step_buttons(echo_decay_controls, self.echo_decay_slider)
+        ecol2.addLayout(echo_decay_controls)
         erow.addLayout(ecol2)
 
         el.addLayout(erow)
@@ -574,6 +603,26 @@ class EditorPage(QWidget):
     # ---------------------------------------------------------------
     #  Upload / Demo
     # ---------------------------------------------------------------
+
+    def _on_recording_ready(self, audio, fs):
+        if fs != dsp.FS:
+            num_samples = int(len(audio) * dsp.FS / fs)
+            from scipy import signal as scipy_signal
+            audio = scipy_signal.resample(audio, num_samples)
+
+        self.source_audio = dsp.normalize(audio)
+        self._current_lib_path = None
+        self.input_audio_card.set_audio(
+            self.source_audio, dsp.FS, "Microphone recording",
+            "Microphone", channels=1)
+        for c in self._library_cards:
+            c.set_selected(False)
+        duration = len(self.source_audio) / dsp.FS
+        self.file_label.setText(
+            f"🎙️  Microphone recording  ({duration:.2f} s at {dsp.FS} Hz)"
+        )
+        self._update_trim_range()
+        self._refresh()
 
     def _on_upload(self):
         path, _ = QFileDialog.getOpenFileName(

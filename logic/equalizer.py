@@ -41,7 +41,8 @@ EQ_PRESETS = {
     "Rock":       [5, 3, -1, -2, 0, 2, 4, 4, 3],
     "Classical":  [4, 3, 2, 0, 0, 0, 2, 3, 4],
     "Electronic": [6, 5, 0, -2, 0, 1, 3, 5, 6],
-    "Speech":     [-6, -4, -1, 2, 5, 4, 1, -2, -5],
+    "Speech":     [-6, -4, -1, 2, 5, 4, 1, -2, -5], # gains for these 9 freqs, 0 db maane no gain, 
+    # +6db maane almost double the loudness, -6 db means half the loudness
 }
 
 
@@ -51,14 +52,14 @@ def band_split(x, fs=FS, low_cut=300, high_cut=3000, numtaps=101):
     hi = signal.firwin(numtaps, high_cut, fs=fs, pass_zero='highpass')
     return (np.convolve(x, lo, mode='same'),
             np.convolve(x, mid, mode='same'),
-            np.convolve(x, hi, mode='same'))
+            np.convolve(x, hi, mode='same')) # 3 ta band e split kore return korbe low, mid, high parts er coeff pelam 
+#low, mid, high, return korar aage nijer og part er shthe colvolve korbe
 
 
-def equalize(x, gains=(1.0, 1.0, 1.0), **kwargs):
+def equalize(x, gains=(1.0, 1.0, 1.0), **kwargs):         
     lo, mid, hi = band_split(x, **kwargs)
     gL, gM, gH = gains
-    return normalize(gL * lo + gM * mid + gH * hi)
-
+    return normalize(gL * lo + gM * mid + gH * hi)  
 
 def equalizer_frequency_response(gains=(1.0, 1.0, 1.0), fs=FS, low_cut=300,
                                   high_cut=3000, numtaps=101, n_points=512):
@@ -72,6 +73,7 @@ def equalizer_frequency_response(gains=(1.0, 1.0, 1.0), fs=FS, low_cut=300,
     combined = gL * lo + gM * mid + gH * hi
     w, h = signal.freqz(combined, worN=n_points, fs=fs)
     return w, 20 * np.log10(np.abs(h) + 1e-9)
+#curve draw korar jonno frequency response return korbe
 
 
 # ============================================================ 9-band graphic EQ

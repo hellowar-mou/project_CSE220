@@ -1,0 +1,20 @@
+{
+  "name": "audio_toolbox_desktop",
+  "version": "1.0.0",
+  "description": "A native PySide6 desktop application for the Signals & Linear Systems course demo: real\r SQLite + bcrypt login, a light theme with a slow-moving animated wave background (pure Qt,\r no browser), and five live audio DSP modules built on one shared engine. Audio upload is\r supported wherever it makes sense, and every module shows live, calibrated visualizations\r of the input, output, and intermediate processing stages.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hellowar-mou/project_CSE220.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hellowar-mou/project_CSE220/issues"
+  },
+  "homepage": "https://github.com/hellowar-mou/project_CSE220#readme"
+}

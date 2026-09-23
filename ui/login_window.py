@@ -28,7 +28,7 @@ class LoginWindow(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Audio Signals Toolbox — Sign in")
+        self.setWindowTitle("SonusCure — Sign in")
         self.resize(980, 640)
 
         # ---- layered background ----
@@ -55,10 +55,10 @@ class LoginWindow(QWidget):
         logo_row.addStretch()
         card_layout.addLayout(logo_row)
 
-        title = QLabel("Audio Signals Toolbox")
+        title = QLabel("SonusCure")
         title.setObjectName("TitleLabel")
         title.setAlignment(Qt.AlignCenter)
-        subtitle = QLabel("Signals & Linear Systems — Course Demo Portal")
+        subtitle = QLabel("Signals & Linear Systems — Audio DSP Suite")
         subtitle.setObjectName("SubtitleLabel")
         subtitle.setAlignment(Qt.AlignCenter)
         card_layout.addWidget(title)

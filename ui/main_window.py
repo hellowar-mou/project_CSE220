@@ -22,7 +22,7 @@ from ui.widgets import FirstRunWalkthrough
 class MainWindow(QMainWindow):
     def __init__(self, username, logout_callback):
         super().__init__()
-        self.setWindowTitle("Audio Signals Toolbox")
+        self.setWindowTitle("SonusCure")
         self.resize(1180, 760)
         self._logout_callback = logout_callback
         self.username = username
@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(0, 0, 0, 0)
 
-        brand = QLabel("🌊 Toolbox")
+        brand = QLabel("🌊 SonusCure")
         brand.setObjectName("SectionTitle")
         side_layout.addWidget(brand)
 
@@ -82,7 +82,7 @@ class MainWindow(QMainWindow):
         self.page_scroll.setWidget(self.stack)
         self.pages = {}
         self._lazy_pages = {
-            "Home": HomePage,
+            "Home": lambda: HomePage(nav_callback=self._navigate_to_page),
             "Noise Remover": NoiseRemoverPage,
             "Equalizer": EqualizerPage,
             "Editor": EditorPage,
@@ -91,7 +91,7 @@ class MainWindow(QMainWindow):
             "Settings": lambda: SettingsPage(self.username, self._show_first_run_walkthrough),
         }
         # Home is built eagerly; the rest build lazily on first visit (faster startup)
-        home = HomePage()
+        home = HomePage(nav_callback=self._navigate_to_page)
         self.pages["Home"] = home
         self.stack.addWidget(home)
 
@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
             Qt.WA_TranslucentBackground, not dense_page)
         self.page_scroll.viewport().setAutoFillBackground(dense_page)
         if dense_page:
-            page_bg = "#131a24" if theme_module.get_current_mode() == "dark" else "#f4f9ff"
+            page_bg = "#131a24" if theme_module.get_current_mode() == "dark" else "#ffffff"
             self.centralWidget().setStyleSheet(
                 f"QWidget#centralWidget {{ background: {page_bg}; }}"
             )
@@ -148,6 +148,20 @@ class MainWindow(QMainWindow):
         # modules so a long page cannot leave the next page clipped at its top.
         self._reset_page_scroll()
         QTimer.singleShot(0, self._reset_page_scroll)
+
+    def _navigate_to_page(self, page_name):
+        mapping = {
+            "Home": 0,
+            "Noise Remover": 1,
+            "Equalizer": 2,
+            "Editor": 3,
+            "Morse Code Converter": 4,
+            "Audio Matcher": 5,
+            "Settings": 6,
+        }
+        idx = mapping.get(page_name)
+        if idx is not None:
+            self.nav.setCurrentRow(idx)
 
     def _reset_page_scroll(self):
         """Keep the shared viewport aligned with the newly selected page."""

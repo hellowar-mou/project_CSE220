@@ -1,4 +1,4 @@
-/* Audio Signals Toolbox — light, airy Qt stylesheet */
+/* SonusCure — light, airy Qt stylesheet */
 
 QWidget {
     font-family: "Segoe UI", "Inter", sans-serif;
@@ -286,6 +286,25 @@ QPushButton#SecondaryButton:checked {
         stop:0 #6fb1ea, stop:1 #8fd3c7);
     color: white;
     border: 1px solid transparent;
+}
+QPushButton#SliderStepButton {
+    min-width: 24px;
+    max-width: 24px;
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0;
+    color: #2f6690;
+    background: rgba(255,255,255,0.9);
+    border: 1px solid #cfe1f2;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
+}
+QPushButton#SliderStepButton:hover {
+    background: #eaf4ff;
+}
+QPushButton#SliderStepButton:pressed {
+    background: #d9f0eb;
 }
 QPushButton#PlayButton {
     background: #eaf6f4;

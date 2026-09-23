@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, QTimer
 import dsp_core as dsp
 from ui.widgets import (
     MplCanvas, AudioTransportWidget, MicRecordWidget, WaveformControls,
-    show_module_help, ModuleGuide, AudioInputCard,
+    show_module_help, ModuleGuide, AudioInputCard, add_slider_step_buttons,
 )
 
 
@@ -207,7 +207,10 @@ class MorsePage(QWidget):
         self.tone_slider.setToolTip("Set the generated Morse tone frequency in hertz.")
         self.tone_slider.valueChanged.connect(self._on_encode_change)
         tone_col.addWidget(self.tone_label)
-        tone_col.addWidget(self.tone_slider)
+        tone_controls = QHBoxLayout()
+        tone_controls.addWidget(self.tone_slider)
+        add_slider_step_buttons(tone_controls, self.tone_slider)
+        tone_col.addLayout(tone_controls)
         controls_grid.addLayout(tone_col, 0, 0)
 
         wpm_col = QVBoxLayout()
@@ -218,7 +221,10 @@ class MorsePage(QWidget):
         self.wpm_slider.setToolTip("Set Morse transmission speed in words per minute.")
         self.wpm_slider.valueChanged.connect(self._on_encode_change)
         wpm_col.addWidget(self.wpm_label)
-        wpm_col.addWidget(self.wpm_slider)
+        wpm_controls = QHBoxLayout()
+        wpm_controls.addWidget(self.wpm_slider)
+        add_slider_step_buttons(wpm_controls, self.wpm_slider)
+        wpm_col.addLayout(wpm_controls)
         controls_grid.addLayout(wpm_col, 0, 1)
 
         vol_col = QVBoxLayout()
@@ -229,7 +235,10 @@ class MorsePage(QWidget):
         self.volume_slider.setToolTip("Set generated audio volume.")
         self.volume_slider.valueChanged.connect(self._on_encode_change)
         vol_col.addWidget(self.volume_label)
-        vol_col.addWidget(self.volume_slider)
+        volume_controls = QHBoxLayout()
+        volume_controls.addWidget(self.volume_slider)
+        add_slider_step_buttons(volume_controls, self.volume_slider)
+        vol_col.addLayout(volume_controls)
         controls_grid.addLayout(vol_col, 1, 0)
 
         fade_col = QVBoxLayout()
@@ -240,7 +249,10 @@ class MorsePage(QWidget):
         self.fade_slider.setToolTip("Smooth generated tone edges to reduce clicks.")
         self.fade_slider.valueChanged.connect(self._on_encode_change)
         fade_col.addWidget(self.fade_label)
-        fade_col.addWidget(self.fade_slider)
+        fade_controls = QHBoxLayout()
+        fade_controls.addWidget(self.fade_slider)
+        add_slider_step_buttons(fade_controls, self.fade_slider)
+        fade_col.addLayout(fade_controls)
         controls_grid.addLayout(fade_col, 1, 1)
         controls_grid.setColumnStretch(0, 1)
         controls_grid.setColumnStretch(1, 1)
@@ -392,7 +404,10 @@ class MorsePage(QWidget):
                                           "risk of false triggers). Higher = stricter.")
         self.threshold_slider.valueChanged.connect(self._on_algo_or_threshold_change)
         thresh_col.addWidget(self.threshold_label)
-        thresh_col.addWidget(self.threshold_slider)
+        threshold_controls = QHBoxLayout()
+        threshold_controls.addWidget(self.threshold_slider)
+        add_slider_step_buttons(threshold_controls, self.threshold_slider)
+        thresh_col.addLayout(threshold_controls)
         det_row.addLayout(thresh_col, 0, 1)
 
         self.manual_timing_check = QCheckBox("Manual timing")
@@ -407,7 +422,10 @@ class MorsePage(QWidget):
         self.unit_slider.setValue(80)
         self.unit_slider.valueChanged.connect(self._on_algo_or_threshold_change)
         unit_col.addWidget(self.unit_label)
-        unit_col.addWidget(self.unit_slider)
+        unit_controls = QHBoxLayout()
+        unit_controls.addWidget(self.unit_slider)
+        add_slider_step_buttons(unit_controls, self.unit_slider)
+        unit_col.addLayout(unit_controls)
         det_row.addLayout(unit_col, 1, 1)
         det_row.setColumnStretch(0, 1)
         det_row.setColumnStretch(1, 1)

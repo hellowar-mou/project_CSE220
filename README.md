@@ -1,7 +1,7 @@
-# Audio Signals Toolbox — Desktop App
+# SonusCure — Audio Signals & DSP Desktop Suite
 
 A native PySide6 desktop application for the Signals & Linear Systems course demo: real
-SQLite + bcrypt login, a light theme with a slow-moving animated wave background (pure Qt,
+SQLite + bcrypt login, theme support with a slow-moving animated wave background (pure Qt,
 no browser), and five live audio DSP modules built on one shared engine. Audio upload is
 supported wherever it makes sense, and every module shows live, calibrated visualizations
 of the input, output, and intermediate processing stages.

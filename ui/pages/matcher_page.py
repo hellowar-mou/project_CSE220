@@ -468,7 +468,11 @@ class MatcherPage(QWidget):
 
         for i, (name, item) in enumerate(self.library.items()):
             frame = QFrame()
-            frame.setStyleSheet("QFrame { background: rgba(255,255,255,0.7); border-radius: 10px; }")
+            frame.setStyleSheet(
+                "QFrame { background: #edf6ff; border-radius: 10px; "
+                "border: 1px solid rgba(111,177,234,0.15); }"
+                "QFrame:hover { background: #e3f0ff; "
+                "border: 1px solid rgba(111,177,234,0.4); }")
             v = QVBoxLayout(frame)
             name_lab = QLabel(f"🎵 {name}")
             name_lab.setStyleSheet("font-weight: 700;")

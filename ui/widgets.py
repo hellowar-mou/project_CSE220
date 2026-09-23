@@ -1,5 +1,6 @@
 import tempfile
 import os
+from functools import partial
 import numpy as np
 import matplotlib
 matplotlib.use("QtAgg")
@@ -9,7 +10,7 @@ from matplotlib.figure import Figure
 from PySide6.QtWidgets import (
     QPushButton, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QProgressBar,
     QSlider, QCheckBox, QMessageBox, QDialog, QStackedWidget, QDialogButtonBox,
-    QFrame,
+    QFrame, QSizePolicy,
 )
 from PySide6.QtCore import QUrl, Signal, Qt, QThread
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -25,6 +26,29 @@ _PLOT_COLORS = {
     "light": {"text": "#33465c", "grid": "#8395ac", "face": "none"},
     "dark": {"text": "#dce6f2", "grid": "#3a4a5e", "face": "#131a24"},
 }
+
+
+def _step_slider(slider, delta):
+    slider.setValue(max(slider.minimum(), min(slider.maximum(),
+                                               slider.value() + delta)))
+
+
+def add_slider_step_buttons(layout, slider, step=1):
+    """Add compact decrement/increment buttons beside a horizontal slider."""
+    layout.setSpacing(4)
+    buttons = []
+    for text, delta in (("-", -step), ("+", step)):
+        button = QPushButton(text)
+        button.setObjectName("SliderStepButton")
+        button.setFixedSize(24, 24)
+        button.setMinimumSize(24, 24)
+        button.setMaximumSize(24, 24)
+        button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        button.setToolTip("Decrease" if delta < 0 else "Increase")
+        button.clicked.connect(partial(_step_slider, slider, delta))
+        layout.addWidget(button)
+        buttons.append(button)
+    return buttons
 
 
 class MicRecorderThread(QThread):
@@ -115,15 +139,16 @@ class MicRecordWidget(QWidget):
         layout.addWidget(dur_label)
 
         self.duration_slider = QSlider(Qt.Horizontal)
-        self.duration_slider.setRange(1, 15)
-        self.duration_slider.setValue(5)
+        self.duration_slider.setRange(10, 150)
+        self.duration_slider.setValue(50)
         self.duration_slider.setFixedWidth(100)
         self.duration_slider.setToolTip("Choose the microphone recording duration in seconds.")
-        self.duration_value = QLabel("5s")
+        self.duration_value = QLabel("5.0s")
         self.duration_value.setObjectName("Caption")
         self.duration_slider.valueChanged.connect(
-            lambda v: self.duration_value.setText(f"{v}s"))
+            lambda v: self.duration_value.setText(f"{v / 10:.1f}s"))
         layout.addWidget(self.duration_slider)
+        add_slider_step_buttons(layout, self.duration_slider)
         layout.addWidget(self.duration_value)
 
         self.vu_meter = QProgressBar()
@@ -148,7 +173,7 @@ class MicRecordWidget(QWidget):
             self.vu_meter.setValue(0)
             self.vu_meter.setVisible(True)
             self._thread = MicRecorderThread(
-                duration=self.duration_slider.value(), fs=dsp.FS, parent=self)
+                duration=self.duration_slider.value() / 10.0, fs=dsp.FS, parent=self)
             self._thread.level_update.connect(self._on_level)
             self._thread.finished.connect(self._on_finished)
             self._thread.start()
@@ -444,17 +469,17 @@ ModuleGuide = GuidanceBubble
 
 
 class FirstRunWalkthrough(QDialog):
-    """One-time in-app orientation for users opening the toolbox for the first time."""
+    """One-time in-app orientation for users opening SonusCure for the first time."""
 
     def __init__(self, user_key="default", parent=None):
         super().__init__(parent)
         self._user_key = user_key
-        self.setWindowTitle("Welcome to Audio Signals Toolbox")
+        self.setWindowTitle("Welcome to SonusCure")
         self.setMinimumWidth(560)
         self._pages = [
-            ("Welcome",
-             "Explore five practical audio tools built on convolution, FFT, "
-             "correlation, and LTI systems."),
+            ("Welcome to SonusCure",
+             "Explore five practical audio DSP tools built on convolution, Fourier "
+             "transforms, correlation, and LTI systems."),
             ("Choose an input",
              "Upload a file, record from your microphone, or use a built-in demo "
              "where available. The current audio is shown in an input card."),

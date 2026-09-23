@@ -13,7 +13,9 @@ from PySide6.QtCore import Qt, Signal, QTimer, QThread, QPropertyAnimation, QEas
 from PySide6.QtGui import QFont, QColor, QPalette
 
 import dsp_core as dsp
-from ui.widgets import MplCanvas, AudioPlayButton, ModuleGuide
+from ui.widgets import (
+    MplCanvas, AudioPlayButton, ModuleGuide, add_slider_step_buttons,
+)
 
 
 # ─────────────────────────────────────────── Smooth Scroll Area
@@ -317,15 +319,16 @@ class NoiseRemoverPage(QWidget):
         mic_row.addWidget(self.rec_duration_label)
 
         self.rec_duration_slider = QSlider(Qt.Horizontal)
-        self.rec_duration_slider.setRange(1, 15)
-        self.rec_duration_slider.setValue(5)
+        self.rec_duration_slider.setRange(10, 150)
+        self.rec_duration_slider.setValue(50)
         self.rec_duration_slider.setFixedWidth(120)
         self.rec_duration_slider.setToolTip("Choose the microphone recording duration.")
         self.rec_duration_slider.valueChanged.connect(
-            lambda v: self.rec_duration_val.setText(f"{v}s"))
+            lambda v: self.rec_duration_val.setText(f"{v / 10:.1f}s"))
         mic_row.addWidget(self.rec_duration_slider)
+        add_slider_step_buttons(mic_row, self.rec_duration_slider)
 
-        self.rec_duration_val = QLabel("5s")
+        self.rec_duration_val = QLabel("5.0s")
         self.rec_duration_val.setStyleSheet("font-size: 12px; font-weight: 600; color: #2f3e50; background: transparent; border: none;")
         mic_row.addWidget(self.rec_duration_val)
 
@@ -441,7 +444,10 @@ class NoiseRemoverPage(QWidget):
         self.n_slider.setValue(4)
         self.n_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.n_label, 0, 0)
-        param_grid.addWidget(self.n_slider, 0, 1)
+        n_controls = QHBoxLayout()
+        n_controls.addWidget(self.n_slider)
+        self.n_step_buttons = add_slider_step_buttons(n_controls, self.n_slider)
+        param_grid.addLayout(n_controls, 0, 1)
 
         # Hiss attenuation
         self.hiss_label = QLabel("Hiss Attenuation: 0.15")
@@ -451,7 +457,10 @@ class NoiseRemoverPage(QWidget):
         self.hiss_slider.setValue(3)
         self.hiss_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.hiss_label, 0, 2)
-        param_grid.addWidget(self.hiss_slider, 0, 3)
+        hiss_controls = QHBoxLayout()
+        hiss_controls.addWidget(self.hiss_slider)
+        self.hiss_step_buttons = add_slider_step_buttons(hiss_controls, self.hiss_slider)
+        param_grid.addLayout(hiss_controls, 0, 3)
 
         # Spectral subtraction alpha
         self.alpha_label = QLabel("Over-subtraction α: 2.0")
@@ -461,7 +470,10 @@ class NoiseRemoverPage(QWidget):
         self.alpha_slider.setValue(20)
         self.alpha_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.alpha_label, 1, 0)
-        param_grid.addWidget(self.alpha_slider, 1, 1)
+        alpha_controls = QHBoxLayout()
+        alpha_controls.addWidget(self.alpha_slider)
+        self.alpha_step_buttons = add_slider_step_buttons(alpha_controls, self.alpha_slider)
+        param_grid.addLayout(alpha_controls, 1, 1)
 
         # Spectral floor beta
         self.beta_label = QLabel("Spectral Floor β: 0.02")
@@ -471,7 +483,10 @@ class NoiseRemoverPage(QWidget):
         self.beta_slider.setValue(2)
         self.beta_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.beta_label, 1, 2)
-        param_grid.addWidget(self.beta_slider, 1, 3)
+        beta_controls = QHBoxLayout()
+        beta_controls.addWidget(self.beta_slider)
+        self.beta_step_buttons = add_slider_step_buttons(beta_controls, self.beta_slider)
+        param_grid.addLayout(beta_controls, 1, 3)
 
         controls_layout.addLayout(param_grid)
 
@@ -695,7 +710,7 @@ class NoiseRemoverPage(QWidget):
             self.status_pill.set_status("Recording...", "red")
             self.vu_meter.setValue(0)
 
-            duration = self.rec_duration_slider.value()
+            duration = self.rec_duration_slider.value() / 10.0
             self._recorder_thread = MicRecorderThread(
                 duration=duration, fs=dsp.FS, parent=self)
             self._recorder_thread.level_update.connect(self._on_vu_update)
@@ -769,12 +784,20 @@ class NoiseRemoverPage(QWidget):
 
         self.n_label.setVisible(is_ma)
         self.n_slider.setVisible(is_ma)
+        for button in self.n_step_buttons:
+            button.setVisible(is_ma)
         self.hiss_label.setVisible(is_fft)
         self.hiss_slider.setVisible(is_fft)
+        for button in self.hiss_step_buttons:
+            button.setVisible(is_fft)
         self.alpha_label.setVisible(is_spectral)
         self.alpha_slider.setVisible(is_spectral)
+        for button in self.alpha_step_buttons:
+            button.setVisible(is_spectral)
         self.beta_label.setVisible(is_spectral)
         self.beta_slider.setVisible(is_spectral)
+        for button in self.beta_step_buttons:
+            button.setVisible(is_spectral)
 
     def _on_param_change(self):
         N = self.n_slider.value() * 2 + 1
@@ -1267,12 +1290,12 @@ class SongCard(QFrame):
         else:
             self.setStyleSheet("""
                 QFrame {
-                    background: rgba(255,255,255,0.85);
+                    background: #edf6ff;
                     border-radius: 14px;
                     border: 1px solid rgba(111,177,234,0.15);
                 }
                 QFrame:hover {
-                    background: rgba(255,255,255,0.95);
+                    background: #e3f0ff;
                     border: 1px solid rgba(111,177,234,0.4);
                 }
             """)
@@ -1447,14 +1470,15 @@ class NoiseRemoverPage(QWidget):
         mic_row.addWidget(self.rec_duration_label)
 
         self.rec_duration_slider = QSlider(Qt.Horizontal)
-        self.rec_duration_slider.setRange(1, 15)
-        self.rec_duration_slider.setValue(5)
+        self.rec_duration_slider.setRange(10, 150)
+        self.rec_duration_slider.setValue(50)
         self.rec_duration_slider.setFixedWidth(120)
         self.rec_duration_slider.valueChanged.connect(
-            lambda v: self.rec_duration_val.setText(f"{v}s"))
+            lambda v: self.rec_duration_val.setText(f"{v / 10:.1f}s"))
         mic_row.addWidget(self.rec_duration_slider)
+        add_slider_step_buttons(mic_row, self.rec_duration_slider)
 
-        self.rec_duration_val = QLabel("5s")
+        self.rec_duration_val = QLabel("5.0s")
         self.rec_duration_val.setStyleSheet("font-size: 12px; font-weight: 600; color: #2f3e50; background: transparent; border: none;")
         mic_row.addWidget(self.rec_duration_val)
 
@@ -1576,7 +1600,10 @@ class NoiseRemoverPage(QWidget):
         self.noise_level_slider.setMinimumWidth(200)
         self.noise_level_slider.valueChanged.connect(
             lambda v: self.noise_level_label.setText(f"Noise Level: {v}%"))
-        level_col.addWidget(self.noise_level_slider)
+        noise_level_controls = QHBoxLayout()
+        noise_level_controls.addWidget(self.noise_level_slider)
+        add_slider_step_buttons(noise_level_controls, self.noise_level_slider)
+        level_col.addLayout(noise_level_controls)
         noise_ctrl_row.addLayout(level_col)
 
         noise_ctrl_row.addStretch()
@@ -1721,7 +1748,10 @@ class NoiseRemoverPage(QWidget):
         self.n_slider.setValue(4)
         self.n_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.n_label, 0, 0)
-        param_grid.addWidget(self.n_slider, 0, 1)
+        n_controls = QHBoxLayout()
+        n_controls.addWidget(self.n_slider)
+        self.n_step_buttons = add_slider_step_buttons(n_controls, self.n_slider)
+        param_grid.addLayout(n_controls, 0, 1)
 
         # Hiss attenuation
         self.hiss_label = QLabel("Hiss Attenuation: 0.15")
@@ -1731,7 +1761,10 @@ class NoiseRemoverPage(QWidget):
         self.hiss_slider.setValue(3)
         self.hiss_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.hiss_label, 0, 2)
-        param_grid.addWidget(self.hiss_slider, 0, 3)
+        hiss_controls = QHBoxLayout()
+        hiss_controls.addWidget(self.hiss_slider)
+        self.hiss_step_buttons = add_slider_step_buttons(hiss_controls, self.hiss_slider)
+        param_grid.addLayout(hiss_controls, 0, 3)
 
         # Spectral subtraction alpha
         self.alpha_label = QLabel("Over-subtraction α: 2.0")
@@ -1741,7 +1774,10 @@ class NoiseRemoverPage(QWidget):
         self.alpha_slider.setValue(20)
         self.alpha_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.alpha_label, 1, 0)
-        param_grid.addWidget(self.alpha_slider, 1, 1)
+        alpha_controls = QHBoxLayout()
+        alpha_controls.addWidget(self.alpha_slider)
+        self.alpha_step_buttons = add_slider_step_buttons(alpha_controls, self.alpha_slider)
+        param_grid.addLayout(alpha_controls, 1, 1)
 
         # Spectral floor beta
         self.beta_label = QLabel("Spectral Floor β: 0.02")
@@ -1751,7 +1787,10 @@ class NoiseRemoverPage(QWidget):
         self.beta_slider.setValue(2)
         self.beta_slider.valueChanged.connect(self._on_param_change)
         param_grid.addWidget(self.beta_label, 1, 2)
-        param_grid.addWidget(self.beta_slider, 1, 3)
+        beta_controls = QHBoxLayout()
+        beta_controls.addWidget(self.beta_slider)
+        self.beta_step_buttons = add_slider_step_buttons(beta_controls, self.beta_slider)
+        param_grid.addLayout(beta_controls, 1, 3)
 
         controls_layout.addLayout(param_grid)
 
@@ -2111,7 +2150,7 @@ class NoiseRemoverPage(QWidget):
             self.status_pill.set_status("Recording...", "red")
             self.vu_meter.setValue(0)
 
-            duration = self.rec_duration_slider.value()
+            duration = self.rec_duration_slider.value() / 10.0
             self._recorder_thread = MicRecorderThread(
                 duration=duration, fs=dsp.FS, parent=self)
             self._recorder_thread.level_update.connect(self._on_vu_update)
@@ -2217,12 +2256,20 @@ class NoiseRemoverPage(QWidget):
 
         self.n_label.setVisible(is_ma)
         self.n_slider.setVisible(is_ma)
+        for button in self.n_step_buttons:
+            button.setVisible(is_ma)
         self.hiss_label.setVisible(is_fft)
         self.hiss_slider.setVisible(is_fft)
+        for button in self.hiss_step_buttons:
+            button.setVisible(is_fft)
         self.alpha_label.setVisible(is_spectral)
         self.alpha_slider.setVisible(is_spectral)
+        for button in self.alpha_step_buttons:
+            button.setVisible(is_spectral)
         self.beta_label.setVisible(is_spectral)
         self.beta_slider.setVisible(is_spectral)
+        for button in self.beta_step_buttons:
+            button.setVisible(is_spectral)
 
     def _on_param_change(self):
         N = self.n_slider.value() * 2 + 1

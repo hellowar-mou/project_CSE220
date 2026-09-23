@@ -38,11 +38,37 @@ SETTINGS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 # regardless of which exact alpha a given widget happens to use.
 _RGBA_WHITE_RE = re.compile(r"rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*([0-9]*\.?[0-9]+)\s*\)")
 _RGBA_MINT_RE = re.compile(r"rgba\(\s*143\s*,\s*211\s*,\s*199\s*,\s*([0-9]*\.?[0-9]+)\s*\)")
+_RGBA_CREAM_RE = re.compile(
+    r"rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*([0-9]*\.?[0-9]+)\s*\)"
+)
+
+_CREAM = "#ffffff"
+_CREAM_RGB = (255, 255, 255)
 
 
 def _regex_recolor(qss):
     qss = _RGBA_WHITE_RE.sub(lambda m: f"rgba(30,41,59,{m.group(1)})", qss)
     qss = _RGBA_MINT_RE.sub(lambda m: f"rgba(95,201,184,{float(m.group(1)) * 0.65:.2f})", qss)
+    return qss
+
+
+def _regex_cream(qss):
+    """Normalize light-theme surfaces to pure white.
+
+    Text that is explicitly white is intentionally left unchanged so it
+    remains readable on accent-colored buttons and badges.
+    """
+    qss = _RGBA_CREAM_RE.sub(
+        lambda m: f"rgba({_CREAM_RGB[0]},{_CREAM_RGB[1]},{_CREAM_RGB[2]},{m.group(1)})",
+        qss,
+    )
+    qss = re.sub(r"background(?:-color)?:\s*white\s*;", f"background: {_CREAM};", qss)
+    qss = re.sub(
+        r"background(?:-color)?:\s*#ffffff\s*;",
+        f"background: {_CREAM};",
+        qss,
+        flags=re.IGNORECASE,
+    )
     return qss
 
 
@@ -104,6 +130,9 @@ _LIGHT_TO_DARK = {
     "background:white;": "background:#1c2634;",
     "background: #ffffff;": "background: #1c2634;",
     "background: #ffffff": "background: #1c2634",
+    "background-color: #ffffff;": "background-color: #1c2634;",
+    "background-color:#ffffff;": "background-color:#1c2634;",
+    "background-color: #ffffff": "background-color: #1c2634",
 
     # page/section headers & wave backdrop
     "#f4f9ff": "#131a24",
@@ -130,6 +159,8 @@ _LIGHT_TO_DARK = {
     "#e7f3ff": "#1c2f42",
     "#d9f0eb": "#1c3a34",
     "#eaf6f4": "#17262f",
+    "#edf6ff": "#1b2a3d",
+    "#e3f0ff": "#22364d",
 
     # status colours stay legible on both themes; left unchanged on purpose:
     # "#6fb1ea", "#8fd3c7", "#2f6690", "#c0392b", "#1e8a5f" (accent/error/success)
@@ -143,8 +174,10 @@ _app_stylesheet_original = None   # the one QApplication-level stylesheet
 
 
 def _recolor(qss, mode):
-    if mode == "light" or not qss:
+    if not qss:
         return qss
+    if mode == "light":
+        return _regex_cream(qss)
     out = _regex_recolor(qss)
     for light, dark in _LIGHT_TO_DARK.items():
         out = out.replace(light, dark)
@@ -240,11 +273,21 @@ def set_current_mode(mode):
     _current_mode = mode
 
     from PySide6.QtWidgets import QWidget, QApplication
+    from PySide6.QtGui import QColor, QPalette
 
     if _app_stylesheet_original is not None:
         app = QApplication.instance()
         if app is not None:
             QApplication._orig_setStyleSheet(app, _recolor(_app_stylesheet_original, mode))
+    else:
+        app = QApplication.instance()
+
+    if app is not None:
+        palette = app.palette()
+        surface = QColor(_CREAM if mode == "light" else "#1c2634")
+        palette.setColor(QPalette.ColorRole.Base, surface)
+        palette.setColor(QPalette.ColorRole.Window, surface)
+        app.setPalette(palette)
 
     dead = []
     for i, (wref, original_qss) in enumerate(_widget_registry):

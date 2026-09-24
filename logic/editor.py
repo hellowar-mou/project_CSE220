@@ -32,38 +32,79 @@ def reverse(x):
 
 
 def time_scale(x, speed=1.0, fs=FS):
-    """Change playback speed WITHOUT changing pitch using OLA time-stretching.
+    """Change playback speed WITHOUT changing pitch using WSOLA time-stretching.
     speed > 1.0 = faster playback, speed < 1.0 = slower playback.
-    Uses Overlap-Add with Hann-windowed frames so the voice stays natural."""
+    Uses Waveform Similarity Overlap-Add (WSOLA) — cross-correlation finds
+    the best overlap position so the voice/pitch stays completely natural."""
     speed = max(0.25, min(speed, 4.0))
     if abs(speed - 1.0) < 0.01:
         return x.copy()
 
-    frame_len = int(0.030 * fs)          # 30 ms frames
-    hop_in = frame_len // 2              # input hop  (50 % overlap)
-    hop_out = max(1, int(hop_in / speed))  # output hop
+    frame_len = int(0.050 * fs)            # 50 ms analysis frames
+    hop_syn = frame_len // 2               # synthesis hop (50 % overlap)
+    hop_ana = max(1, int(hop_syn * speed)) # analysis hop  (scaled by speed)
+    tolerance = frame_len // 4             # WSOLA search radius (samples)
 
     window = np.hanning(frame_len)
 
-    n_frames = (len(x) - frame_len) // hop_in + 1
-    out_len = (n_frames - 1) * hop_out + frame_len
+    # estimate output length
+    n_frames = 1 + (len(x) - frame_len) // hop_ana
+    out_len = (n_frames + 1) * hop_syn + frame_len
     output = np.zeros(out_len)
     win_sum = np.zeros(out_len)
 
-    for i in range(n_frames):
-        si = i * hop_in
-        if si + frame_len > len(x):
-            break
-        frame = x[si : si + frame_len] * window
+    # first frame — copy directly
+    if frame_len > len(x):
+        return x.copy()
+    output[:frame_len] += x[:frame_len] * window
+    win_sum[:frame_len] += window
 
-        so = i * hop_out
+    ana_pos = 0  # tracks the "natural" analysis position in input
+
+    for i in range(1, n_frames):
+        # nominal next analysis position
+        ana_pos_nominal = int(i * hop_ana)
+
+        # search window: look around the nominal position for the best match
+        search_lo = max(0, ana_pos_nominal - tolerance)
+        search_hi = min(len(x) - frame_len, ana_pos_nominal + tolerance)
+        if search_hi < search_lo:
+            break
+
+        # the previously-synthesised tail that we must overlap with
+        so = i * hop_syn
         if so + frame_len > out_len:
             break
-        output[so : so + frame_len] += frame
+
+        # overlap region from the already-written output
+        prev_tail = output[so : so + frame_len]
+
+        # find the shift that maximises cross-correlation with prev_tail
+        best_pos = ana_pos_nominal
+        best_corr = -np.inf
+        for candidate in range(search_lo, search_hi + 1):
+            seg = x[candidate : candidate + frame_len]
+            if len(seg) < frame_len:
+                break
+            # normalised dot-product (fast enough for the short search range)
+            corr = np.dot(prev_tail, seg)
+            if corr > best_corr:
+                best_corr = corr
+                best_pos = candidate
+
+        frame = x[best_pos : best_pos + frame_len]
+        if len(frame) < frame_len:
+            break
+
+        output[so : so + frame_len] += frame * window
         win_sum[so : so + frame_len] += window
 
-    # avoid divide-by-zero in gaps
+    # normalise by the accumulated window sum (avoids amplitude modulation)
     win_sum[win_sum < 1e-8] = 1e-8
+    # trim to actual content
+    last_nonzero = np.max(np.nonzero(win_sum > 1e-7)[0]) + 1 if np.any(win_sum > 1e-7) else len(output)
+    output = output[:last_nonzero]
+    win_sum = win_sum[:last_nonzero]
     output /= win_sum
 
     return normalize(output)

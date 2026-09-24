@@ -365,7 +365,7 @@ class EditorPage(QWidget):
 
         desc = QLabel(
             "Change the playback speed. Faster speeds shorten the audio; "
-            "slower speeds stretch it. Uses resampling (pitch also shifts)."
+            "slower speeds stretch it. Uses WSOLA time-stretching (pitch is preserved)."
         )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)

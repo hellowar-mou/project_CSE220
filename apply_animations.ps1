@@ -1,6 +1,6 @@
-# Apply professional, cohesive presentation animations to SonusCure_Presentation.pptx
+# Apply professional, cohesive presentation animations to ReSonus_Presentation.pptx
 param(
-    [string]$pptxPath = "D:\audio_toolbox_desktop\SonusCure_Presentation.pptx"
+    [string]$pptxPath = "D:\audio_toolbox_desktop\ReSonus_Presentation.pptx"
 )
 
 Write-Host "Connecting to PowerPoint COM engine..."

@@ -22,7 +22,7 @@ from ui.widgets import FirstRunWalkthrough
 class MainWindow(QMainWindow):
     def __init__(self, username, logout_callback):
         super().__init__()
-        self.setWindowTitle("SonusCure")
+        self.setWindowTitle("ReSonus")
         self.resize(1180, 760)
         self._logout_callback = logout_callback
         self.username = username
@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(0, 0, 0, 0)
 
-        brand = QLabel("🌊 SonusCure")
+        brand = QLabel("🌊 ReSonus")
         brand.setObjectName("SectionTitle")
         side_layout.addWidget(brand)
 

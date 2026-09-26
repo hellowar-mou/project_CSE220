@@ -1,4 +1,4 @@
-# SonusCure — Audio Signals & DSP Desktop Suite
+# ReSonus — Audio Signals & DSP Desktop Suite
 
 A native PySide6 desktop application for the Signals & Linear Systems course demo: real
 SQLite + bcrypt login, theme support with a slow-moving animated wave background (pure Qt,

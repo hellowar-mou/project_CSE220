@@ -469,15 +469,15 @@ ModuleGuide = GuidanceBubble
 
 
 class FirstRunWalkthrough(QDialog):
-    """One-time in-app orientation for users opening SonusCure for the first time."""
+    """One-time in-app orientation for users opening ReSonus for the first time."""
 
     def __init__(self, user_key="default", parent=None):
         super().__init__(parent)
         self._user_key = user_key
-        self.setWindowTitle("Welcome to SonusCure")
+        self.setWindowTitle("Welcome to ReSonus")
         self.setMinimumWidth(560)
         self._pages = [
-            ("Welcome to SonusCure",
+            ("Welcome to ReSonus",
              "Explore five practical audio DSP tools built on convolution, Fourier "
              "transforms, correlation, and LTI systems."),
             ("Choose an input",

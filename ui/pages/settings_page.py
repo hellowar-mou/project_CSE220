@@ -79,7 +79,7 @@ class SettingsPage(QWidget):
         hh_layout.addWidget(help_title)
 
         help_desc = QLabel(
-            "Review the core DSP workflow, mathematical formulas, and algorithms used by each SonusCure module. "
+            "Review the core DSP workflow, mathematical formulas, and algorithms used by each ReSonus module. "
             "Click <b>Explain the Algorithm</b> under any module to launch an interactive, step-by-step animated video visualizer."
         )
         help_desc.setObjectName("Caption")
@@ -153,7 +153,7 @@ class SettingsPage(QWidget):
         doc_label.setTextFormat(Qt.RichText)
         doc_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         doc_label.setStyleSheet(
-            "QLabel { background: transparent; font-size: 0.88rem; line-height: 1.6; color: inherit; }"
+            "QLabel { background: transparent; font-size: 0.88rem; line-height: 1.6; color: #33465c; }"
         )
         doc_label.setText(html_content)
         c_layout.addWidget(doc_label)

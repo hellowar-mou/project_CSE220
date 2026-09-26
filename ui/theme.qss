@@ -1,4 +1,4 @@
-/* SonusCure — light, airy Qt stylesheet */
+/* ReSonus — light, airy Qt stylesheet */
 
 QWidget {
     font-family: "Segoe UI", "Inter", sans-serif;

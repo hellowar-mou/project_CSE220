@@ -201,7 +201,7 @@ class HomePage(QWidget):
 
         # Title row
         title_row = QHBoxLayout()
-        title = QLabel("🌊 SonusCure")
+        title = QLabel("🌊 ReSonus")
         title.setObjectName("TitleLabel")
         title.setStyleSheet("font-size: 1.85rem; font-weight: 800; color: #1c2a38;")
         title_row.addWidget(title)

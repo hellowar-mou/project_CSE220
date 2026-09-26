@@ -1,5 +1,5 @@
 """
-Shared DSP core for SonusCure.
+Shared DSP core for ReSonus.
 Every app in this project (Noise Remover, Equalizer, Editor, Morse Code
 Converter, Audio Matcher) is built from three primitives:
   - Convolution (LTI systems)

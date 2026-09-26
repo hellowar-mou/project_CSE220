@@ -86,6 +86,9 @@ _PRESERVE_HEX = {
     # deliberately light (for readability on dark backgrounds) and must
     # not be re-darkened by the generic pale-background fallback pass.
     "e8eff8", "dce6f2", "c3d2e4", "93a7c0", "7d92ac",
+    "f1f5fb", "8fe0cf", "d8b4fe", "f5d77a", "e8f3ff", "8db7ff",
+    # explicit dark-theme foreground colors used by dialogs and controls
+    "f8fafc", "f1f5f9", "cbd5e1", "7dd3fc", "38bdf8", "ffffff",
 }
 
 
@@ -145,6 +148,19 @@ _LIGHT_TO_DARK = {
     "#445872": "#c3d2e4",
     "#6b7f96": "#93a7c0",
     "#8a9bb0": "#7d92ac",
+    "#2f6690": "#8db7ff",
+    # text colours used by page-specific inline styles
+    "#1c2a38": "#f1f5fb",
+    "#2c3e50": "#e8eff8",
+    "#43586d": "#c3d2e4",
+    "#4a5d73": "#c3d2e4",
+    "#1e7062": "#8fe0cf",
+    "#6c3483": "#d8b4fe",
+    "#9a7d0a": "#f5d77a",
+    "#173f63": "#e8f3ff",
+    "#123650": "#e8f3ff",
+    "#2563eb": "#8db7ff",
+    "#b8860b": "#f5d77a",
 
     # borders / dividers
     "#d6e2ef": "#2c3b4f",
@@ -285,8 +301,12 @@ def set_current_mode(mode):
     if app is not None:
         palette = app.palette()
         surface = QColor(_CREAM if mode == "light" else "#1c2634")
+        text = QColor("#33465c" if mode == "light" else "#dce6f2")
         palette.setColor(QPalette.ColorRole.Base, surface)
         palette.setColor(QPalette.ColorRole.Window, surface)
+        palette.setColor(QPalette.ColorRole.Text, text)
+        palette.setColor(QPalette.ColorRole.WindowText, text)
+        palette.setColor(QPalette.ColorRole.ButtonText, text)
         app.setPalette(palette)
 
     dead = []

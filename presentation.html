@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SonusCure — Interactive Audio Signals & DSP Presentation</title>
+<title>ReSonus — Interactive Audio Signals & DSP Presentation</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 :root {
@@ -291,7 +291,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     <div style="font-size:1.4rem;">🌊</div>
     <div>
       <div style="font-weight:800; font-size:0.95rem; color:var(--text-heading); letter-spacing:-0.01em;">
-        SonusCure <span style="font-weight:400; font-size:0.8rem; opacity:0.8;">— Audio Signals & DSP Suite</span>
+        ReSonus <span style="font-weight:400; font-size:0.8rem; opacity:0.8;">— Audio Signals & DSP Suite</span>
       </div>
       <div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;" id="modLabel">CSE220 Project · Complete Architecture</div>
     </div>
@@ -325,7 +325,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     <div class="floating-hero" style="font-size:3.8rem; margin-bottom:8px;">🌊</div>
     
     <h1 class="fi d2" style="font-size:3.2rem; font-weight:900; margin:0 0 12px; letter-spacing:-0.03em; background:linear-gradient(135deg, #6fb1ea, #8fd3c7, #c9b6f2); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">
-      SonusCure
+      ReSonus
     </h1>
     <div class="fi d3" style="font-size:1.35rem; font-weight:700; color:var(--text-heading); margin-bottom:10px;">
       Real-Time Native Audio DSP Desktop Suite
@@ -446,7 +446,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
           </div>
 
           <div class="card" style="padding:16px;">
-            <div style="color:var(--accent-purple); font-size:0.85rem; font-weight:700; margin-bottom:8px;">💻 Implementation in SonusCure (dsp_core.py)</div>
+            <div style="color:var(--accent-purple); font-size:0.85rem; font-weight:700; margin-bottom:8px;">💻 Implementation in ReSonus (dsp_core.py)</div>
             <div class="code-block" style="font-size:0.78rem;">
 <span class="keyword">def</span> <span class="func">moving_average_filter</span>(x, N=<span class="number">9</span>):
     h = np.<span class="func">ones</span>(N) / N       <span class="comment"># uniform kernel of length N</span>
@@ -1174,9 +1174,9 @@ clean_mag = mag * gain
       </div>
 
       <div class="card fi d2">
-        <div class="sec-head" style="color:#e67e22);">📌 Pitch Preservation via Overlap-Add</div>
+        <div class="sec-head" style="color:#e67e22;">📌 Pitch Preservation via Overlap-Add</div>
         <p style="font-size:0.92rem; line-height:1.75; margin:0;">
-          Naively re-sampling audio changes vocal pitch (chipmunk effect). SonusCure decomposes audio into 30ms Hann-windowed overlapping frames, reads with fixed input hop <code>hop_in</code>, but overlaps synthesis frames at variable distance <code>hop_out = hop_in / speed</code>, then normalizes by window sum.
+          Naively re-sampling audio changes vocal pitch (chipmunk effect). ReSonus decomposes audio into 30ms Hann-windowed overlapping frames, reads with fixed input hop <code>hop_in</code>, but overlaps synthesis frames at variable distance <code>hop_out = hop_in / speed</code>, then normalizes by window sum.
         </p>
       </div>
 
@@ -1261,7 +1261,7 @@ output /= win_sum
       <div class="card fi d2">
         <div class="sec-head" style="color:var(--accent-coral);">📌 Textbook LTI System Modeling</div>
         <p style="font-size:0.92rem; line-height:1.75; margin:0;">
-          SonusCure constructs an impulse response describing an acoustic chamber with delay <code>D = 150ms</code> and geometric decay factor <code>α = 0.5</code>:
+          ReSonus constructs an impulse response describing an acoustic chamber with delay <code>D = 150ms</code> and geometric decay factor <code>α = 0.5</code>:
           <code>h[n] = ∑_{k=0}^{M} α^k δ[n - kD]</code>. Convolving <code>y[n] = (x * h)[n]</code> creates realistic acoustic echoes.
         </p>
       </div>
@@ -1684,7 +1684,7 @@ output /= win_sum
         <div class="card fi d2">
           <div class="sec-head" style="color:var(--accent-mint);"><span>🔍</span> Adaptive Carrier Acquisition</div>
           <p style="font-size:0.88rem; line-height:1.75; color:var(--text-muted); margin:0 0 16px 0;">
-            Incoming Morse transmissions may use any pitch from 400 Hz to 1500 Hz depending on the radio operator's preference. Rather than demanding manual tuning, SonusCure executes a fast full-signal FFT and restricts the peak search to <code>[200, 2000] Hz</code>:
+            Incoming Morse transmissions may use any pitch from 400 Hz to 1500 Hz depending on the radio operator's preference. Rather than demanding manual tuning, ReSonus executes a fast full-signal FFT and restricts the peak search to <code>[200, 2000] Hz</code>:
           </p>
 
           <div class="code-block" style="font-size:0.78rem; margin-bottom:14px;">
@@ -1926,7 +1926,7 @@ output /= win_sum
         <div class="card fi d2">
           <div class="sec-head" style="color:var(--accent-coral);"><span>🔊</span> Mathematical Sound Generators</div>
           <p style="font-size:0.88rem; line-height:1.7; color:var(--text-muted); margin:0 0 16px 0;">
-            Rather than relying on noisy microphones, SonusCure synthesizes three mathematically pristine acoustic reference templates using physical resonant exponential decay models <code>e^{-t / τ}</code>:
+            Rather than relying on noisy microphones, ReSonus synthesizes three mathematically pristine acoustic reference templates using physical resonant exponential decay models <code>e^{-t / τ}</code>:
           </p>
 
           <div style="display:flex; gap:8px; margin-bottom:14px;">
@@ -2028,7 +2028,7 @@ output /= win_sum
         <div class="card fi d2">
           <div class="sec-head" style="color:#e67e22;"><span>⚖️</span> Eliminating Volume Bias</div>
           <p style="font-size:0.88rem; line-height:1.75; color:var(--text-muted); margin:0 0 16px 0;">
-            Raw dot products scale with acoustic loudness: a completely different loud sound can produce a higher score than a quiet true match. SonusCure divides by Euclidean L2 norms:
+            Raw dot products scale with acoustic loudness: a completely different loud sound can produce a higher score than a quiet true match. ReSonus divides by Euclidean L2 norms:
           </p>
 
           <div style="padding:14px; background:var(--code-bg); border-radius:10px; border:1px solid var(--card-border); margin-bottom:16px; font-family:'Cambria Math', serif; font-size:0.95rem; text-align:center; color:var(--accent-amber);">
@@ -2217,7 +2217,7 @@ output /= win_sum
   <div style="min-height:calc(100vh - 72px); padding:32px;">
     <div style="max-width:1050px; margin:0 auto;">
       <div class="card fi d1" style="border-left:4px solid var(--accent-mint); padding:20px 28px;">
-        <h2 style="font-size:2rem; font-weight:800; margin:0; color:var(--text-heading);">The Three Mathematical Pillars of SonusCure</h2>
+        <h2 style="font-size:2rem; font-weight:800; margin:0; color:var(--text-heading);">The Three Mathematical Pillars of ReSonus</h2>
         <div style="font-size:0.95rem; color:var(--text-muted); margin-top:4px;">
           How Signals &amp; Linear Systems (CSE220) theory translates directly into production desktop code.
         </div>
@@ -2265,7 +2265,7 @@ output /= win_sum
 
       <div class="card fi d5" style="text-align:center; margin-top:20px; padding:22px;">
         <div style="font-size:1.35rem; font-weight:800; color:var(--text-heading);">
-          SonusCure — Advanced Audio Signals &amp; Linear Systems Suite
+          ReSonus — Advanced Audio Signals &amp; Linear Systems Suite
         </div>
         <div style="font-size:0.85rem; color:var(--text-muted); margin-top:6px;">
           Seamlessly engineered with Python, PySide6, NumPy, and SciPy · CSE220 Final Presentation
@@ -3313,7 +3313,7 @@ async function runMorsePipelineDemo() {
   const prog = document.getElementById('pipelineProgressLabel');
   if (!term || !prog) return;
 
-  const textToDecode = "SONUSCURE";
+  const textToDecode = "ReSonus";
   term.textContent = "";
 
   for (let st = 1; st <= 5; st++) {

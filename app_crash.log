@@ -322,3 +322,15 @@ Traceback (most recent call last):
     self.update()
     ~~~~~~~~~~~^^
 RuntimeError: libshiboken: Internal C++ object (WaveBackground) already deleted.
+2026-09-28 11:14:47,593 ERROR Theme listener failed
+Traceback (most recent call last):
+  File "D:\audio_toolbox_desktop\ui\theme.py", line 334, in set_current_mode
+    cb()
+    ~~^^
+  File "D:\audio_toolbox_desktop\ui\wave_widget.py", line 43, in _on_global_theme_changed
+    self.set_theme(theme_module.get_current_mode())
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\audio_toolbox_desktop\ui\wave_widget.py", line 40, in set_theme
+    self.update()
+    ~~~~~~~~~~~^^
+RuntimeError: libshiboken: Internal C++ object (WaveBackground) already deleted.
